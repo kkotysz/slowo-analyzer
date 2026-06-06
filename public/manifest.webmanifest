@@ -1,0 +1,11 @@
+{
+  "name": "Słowo Analyzer",
+  "short_name": "Słowo",
+  "description": "Polski WordleBot-lite do analizy kandydatów, bucketów i strategii.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#253246",
+  "lang": "pl",
+  "icons": []
+}
