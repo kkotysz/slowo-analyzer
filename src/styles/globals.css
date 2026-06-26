@@ -238,12 +238,15 @@ button:not(:disabled):active {
   padding: 22px;
   background: rgba(11, 16, 23, 0.58);
   backdrop-filter: blur(10px);
+  overflow: auto;
 }
 
 .help-dialog {
   width: min(900px, 100%);
-  max-height: min(820px, calc(100vh - 44px));
-  overflow: hidden;
+  height: min(820px, calc(100dvh - 44px));
+  max-height: calc(100dvh - 44px);
+  min-height: 0;
+  overflow: clip;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   border: 1px solid var(--line);
@@ -256,6 +259,7 @@ button:not(:disabled):active {
 }
 
 .help-header {
+  min-height: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -278,10 +282,15 @@ button:not(:disabled):active {
 }
 
 .help-content {
+  min-height: 0;
   overflow: auto;
-  padding: 20px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 20px 20px 24px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  align-items: start;
   gap: 14px;
 }
 
@@ -1369,10 +1378,30 @@ button:not(:disabled):active {
 
   .help-content {
     grid-template-columns: 1fr;
+    padding: 14px 14px 18px;
   }
 
   .help-overlay {
     padding: 10px;
+  }
+
+  .help-dialog {
+    width: 100%;
+    height: calc(100dvh - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+
+  .help-header {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .help-header h2 {
+    font-size: 24px;
+  }
+
+  .help-section {
+    padding: 12px;
   }
 
   .detail-strip {
