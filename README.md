@@ -22,6 +22,19 @@ npm test
 npm run build
 ```
 
+Build dla podstrony `https://plokoon12.github.io/slowo-analyzer/`:
+
+```bash
+npm run build:pages
+npm run preview:pages
+```
+
+Ten build zaklada, ze pliki zostana opublikowane pod folderem
+`slowo-analyzer/` w repo strony. Najbezpieczniejszy deploy bez commitowania
+pliku builda do repo strony to workflow GitHub Pages w repo
+`plokoon12/plokoon12.github.io`, ktory checkoutuje to repo tylko do odczytu,
+kopiuje `dist/` do artefaktu Pages i publikuje artefakt.
+
 ## Glowny przeplyw
 
 Domyslny tryb to **Symulacja z haslem**:

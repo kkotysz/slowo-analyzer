@@ -1,6 +1,17 @@
-const CACHE_NAME = "slowo-analyzer-v7";
-const APP_SHELL = ["/", "/slowa.txt", "/hasla.txt", "/answer-metadata.json", "/opening-moves.json", "/manifest.webmanifest"];
-const VERSIONED_APP_SHELL_PATHS = new Set(["/slowa.txt", "/hasla.txt", "/answer-metadata.json", "/opening-moves.json"]);
+const CACHE_NAME = "slowo-analyzer-v8";
+const BASE_PATH = new URL("./", self.location.href).pathname;
+const versionedAppShellAssetNames = ["slowa.txt", "hasla.txt", "answer-metadata.json", "opening-moves.json"];
+
+function appShellPath(path) {
+  return new URL(path, self.location.href).pathname;
+}
+
+const APP_SHELL = [
+  appShellPath("./"),
+  ...versionedAppShellAssetNames.map((path) => appShellPath(path)),
+  appShellPath("manifest.webmanifest"),
+];
+const VERSIONED_APP_SHELL_PATHS = new Set(versionedAppShellAssetNames.map((path) => appShellPath(path)));
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
@@ -38,7 +49,7 @@ self.addEventListener("fetch", (event) => {
       }
 
       return fetch(request).then((response) => {
-        if (response.ok && url.origin === self.location.origin) {
+        if (response.ok && url.origin === self.location.origin && url.pathname.startsWith(BASE_PATH)) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         }

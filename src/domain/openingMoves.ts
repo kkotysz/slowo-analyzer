@@ -1,7 +1,8 @@
 import type { AnswerProfile, MoveScore, PrecomputedOpeningMoves, RankingSortKey, Word } from "../types/wordle";
 import { DICTIONARY_VERSION } from "./dictionaryMetadata";
+import { createPublicAssetUrl } from "./publicAssets";
 
-const OPENING_MOVES_URL = "/opening-moves.json";
+const OPENING_MOVES_URL = createPublicAssetUrl("opening-moves.json");
 
 let openingMovesPromise: Promise<PrecomputedOpeningMoves | null> | undefined;
 

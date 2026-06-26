@@ -5,6 +5,7 @@ import { buildRankingPool, compareMoveScores } from "../domain/ranking";
 import { simulateSolverHistogram, SolverSimulationCancelledError } from "../domain/solver";
 import type { SolverMovePicker } from "../domain/solver";
 import { codeToPatternString } from "../domain/wordle";
+import { createPublicAssetUrl } from "../domain/publicAssets";
 import type {
   MoveScore,
   PrecomputedOpeningMoves,
@@ -15,7 +16,7 @@ import type {
   Word,
 } from "../types/wordle";
 
-const OPENING_MOVES_URL = "/opening-moves.json";
+const OPENING_MOVES_URL = createPublicAssetUrl("opening-moves.json");
 const RANKING_CACHE_LIMIT = 24;
 const BUCKET_SUMMARY_LIMIT = 8;
 const BUCKET_EXAMPLE_LIMIT = 8;

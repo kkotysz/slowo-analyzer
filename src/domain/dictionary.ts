@@ -5,12 +5,13 @@ import {
   parseAnswerMetadataText,
 } from "./answerMetadata";
 import { DICTIONARY_VERSION } from "./dictionaryMetadata";
+import { createPublicAssetUrl } from "./publicAssets";
 import { readCachedDictionary, writeCachedDictionary } from "../storage/dictionaryCache";
 import { isFiveLetterWord, normalizeWord } from "./wordle";
 
-const PUBLIC_GUESSES_URL = "/slowa.txt";
-const PUBLIC_ANSWERS_URL = "/hasla.txt";
-const PUBLIC_METADATA_URL = "/answer-metadata.json";
+const PUBLIC_GUESSES_URL = createPublicAssetUrl("slowa.txt");
+const PUBLIC_ANSWERS_URL = createPublicAssetUrl("hasla.txt");
+const PUBLIC_METADATA_URL = createPublicAssetUrl("answer-metadata.json");
 const PUBLIC_DICTIONARY_SOURCE = `${PUBLIC_GUESSES_URL} + ${PUBLIC_ANSWERS_URL} + ${PUBLIC_METADATA_URL}`;
 const MIN_FULL_GUESS_WORDS = 20000;
 const MIN_FULL_ANSWER_WORDS = 5000;
