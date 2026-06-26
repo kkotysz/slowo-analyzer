@@ -1,7 +1,8 @@
 import type { DictionaryLists, Word } from "../types/wordle";
+import { normalizeAnswerMetadata } from "../domain/answerMetadata";
+import { DICTIONARY_VERSION } from "../domain/dictionaryMetadata";
 
 const DICTIONARY_CACHE_KEY = "slowoAnalyzerDictionaryV2";
-const DICTIONARY_URL_KEY = "slowoAnalyzerDictionaryUrl";
 const LEGACY_DICTIONARY_KEY = "slowoAnalyzerDictionaryV1";
 const DB_NAME = "slowoAnalyzer";
 const DB_VERSION = 1;
@@ -27,40 +28,30 @@ function hasIndexedDb(): boolean {
   return typeof indexedDB !== "undefined";
 }
 
-function createSharedLists(words: readonly Word[], source: string, savedAt = Date.now()): DictionaryLists {
-  const shared = [...words];
-  return {
-    allowedGuesses: shared,
-    possibleAnswers: shared,
-    guesses: shared,
-    answers: shared,
-    mode: "shared",
-    source,
-    validatedAt: savedAt,
-  };
-}
-
 function normalizeCachedLists(raw: unknown, source = "cache", savedAt = Date.now()): DictionaryLists | null {
   if (!raw || typeof raw !== "object") return null;
   const maybe = raw as Partial<DictionaryLists> & { words?: Word[] };
-  if (Array.isArray(maybe.allowedGuesses) && maybe.allowedGuesses.length >= MIN_CACHED_WORDS) {
-    const possibleAnswers = Array.isArray(maybe.possibleAnswers) && maybe.possibleAnswers.length
-      ? maybe.possibleAnswers
-      : maybe.allowedGuesses;
+  if (maybe.dictionaryVersion !== DICTIONARY_VERSION) return null;
+
+  if (
+    Array.isArray(maybe.allowedGuesses) &&
+    maybe.allowedGuesses.length >= MIN_CACHED_WORDS &&
+    Array.isArray(maybe.possibleAnswers) &&
+    maybe.possibleAnswers.length >= MIN_CACHED_WORDS
+  ) {
     return {
       allowedGuesses: maybe.allowedGuesses,
-      possibleAnswers,
+      possibleAnswers: maybe.possibleAnswers,
+      answerMetadata: normalizeAnswerMetadata(maybe.answerMetadata, maybe.possibleAnswers),
       guesses: maybe.allowedGuesses,
-      answers: possibleAnswers,
+      answers: maybe.possibleAnswers,
       mode: maybe.mode === "separate" ? "separate" : "shared",
       source: maybe.source ?? source,
       validatedAt: maybe.validatedAt ?? savedAt,
       rejectedCount: maybe.rejectedCount,
       rawCount: maybe.rawCount,
+      dictionaryVersion: DICTIONARY_VERSION,
     };
-  }
-  if (Array.isArray(maybe.words) && maybe.words.length >= MIN_CACHED_WORDS) {
-    return createSharedLists(maybe.words, source, savedAt);
   }
   return null;
 }
@@ -123,21 +114,6 @@ async function writeIndexedDbDictionary(lists: DictionaryLists, source: string):
   });
 }
 
-export function readDictionaryUrl(): string {
-  if (!hasLocalStorage()) return "";
-  return localStorage.getItem(DICTIONARY_URL_KEY) ?? "";
-}
-
-export function saveDictionaryUrl(url: string): void {
-  if (!hasLocalStorage()) return;
-  const trimmed = url.trim();
-  if (trimmed) {
-    localStorage.setItem(DICTIONARY_URL_KEY, trimmed);
-  } else {
-    localStorage.removeItem(DICTIONARY_URL_KEY);
-  }
-}
-
 export async function readCachedDictionary(): Promise<{ lists: DictionaryLists; source: string } | null> {
   const indexed = await readIndexedDbDictionary();
   if (indexed) return indexed;
@@ -159,28 +135,13 @@ export async function readCachedDictionary(): Promise<{ lists: DictionaryLists; 
     }
   }
 
-  const legacy = localStorage.getItem(LEGACY_DICTIONARY_KEY);
-  if (!legacy) return null;
-
-  try {
-    const words = JSON.parse(legacy) as Word[];
-    const lists = Array.isArray(words) && words.length >= MIN_CACHED_WORDS
-      ? createSharedLists(words, "legacy localStorage")
-      : null;
-    localStorage.removeItem(LEGACY_DICTIONARY_KEY);
-    if (lists) {
-      await writeCachedDictionary(lists, "legacy localStorage");
-      return { lists, source: "legacy localStorage" };
-    }
-  } catch {
-    localStorage.removeItem(LEGACY_DICTIONARY_KEY);
-  }
+  localStorage.removeItem(LEGACY_DICTIONARY_KEY);
 
   return null;
 }
 
 export async function writeCachedDictionary(lists: DictionaryLists, source: string): Promise<void> {
-  const payload = { ...lists, source, validatedAt: Date.now() };
+  const payload = { ...lists, source, validatedAt: Date.now(), dictionaryVersion: DICTIONARY_VERSION };
   const stored = await writeIndexedDbDictionary(payload, source);
   if (!stored && hasLocalStorage()) {
     const compact: CachedDictionary = {

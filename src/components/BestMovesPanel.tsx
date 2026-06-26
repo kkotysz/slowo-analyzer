@@ -7,10 +7,12 @@ interface BestMovesPanelProps {
   progress: number;
   candidateOnly: boolean;
   exactRanking: boolean;
+  hideUnlikelyAnswers: boolean;
   sortKey: RankingSortKey;
   inspectedWord?: Word;
   onCandidateOnlyChange: (value: boolean) => void;
   onExactRankingChange: (value: boolean) => void;
+  onHideUnlikelyAnswersChange: (value: boolean) => void;
   onSortKeyChange: (value: RankingSortKey) => void;
   onPickWord: (word: Word) => void;
   onInspectMove: (move: MoveScore) => void;
@@ -21,6 +23,12 @@ function formatScore(value: number, digits = 2): string {
     maximumFractionDigits: digits,
     minimumFractionDigits: digits,
   });
+}
+
+function unlikelyMoveTitle(move: MoveScore): string | undefined {
+  if (move.likelihood !== "unlikely") return undefined;
+  const lemmas = move.lemmas?.length ? `: ${move.lemmas.join(", ")}` : "";
+  return `Odmiana${lemmas}`;
 }
 
 const SORTABLE_COLUMNS: Array<{ key: RankingSortKey; label: string; shortLabel: string }> = [
@@ -60,10 +68,12 @@ export function BestMovesPanel({
   progress,
   candidateOnly,
   exactRanking,
+  hideUnlikelyAnswers,
   sortKey,
   inspectedWord,
   onCandidateOnlyChange,
   onExactRankingChange,
+  onHideUnlikelyAnswersChange,
   onSortKeyChange,
   onPickWord,
   onInspectMove,
@@ -92,6 +102,14 @@ export function BestMovesPanel({
             />
             <span>Dokładnie</span>
           </label>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={hideUnlikelyAnswers}
+              onChange={(event) => onHideUnlikelyAnswersChange(event.target.checked)}
+            />
+            <span>Ukryj unlikely</span>
+          </label>
         </div>
       </div>
       <div className="move-table" role="table" aria-label="Ranking ruchów">
@@ -107,31 +125,35 @@ export function BestMovesPanel({
             />
           ))}
         </div>
-        {moves.map((move, index) => (
-          <button
-            className={move.word === inspectedWord ? "move-row inspected" : "move-row"}
-            type="button"
-            key={move.word}
-            aria-current={move.word === inspectedWord ? "true" : undefined}
-            onFocus={() => onInspectMove(move)}
-            onMouseEnter={() => onInspectMove(move)}
-            onPointerEnter={() => onInspectMove(move)}
-            onClick={() => {
-              onInspectMove(move);
-              onPickWord(move.word);
-            }}
-          >
-            <span className="rank">{index + 1}</span>
-            <span className="move-word">
-              {formatWord(move.word)}
-              <small>{move.isCandidate ? "kandydat" : "info"}</small>
-            </span>
-            <span>{formatScore(move.entropy, 3)}</span>
-            <span>{move.worstBucket.toLocaleString("pl-PL")}</span>
-            <span>{formatScore(move.averageBucket, 1)}</span>
-            <span>{formatScore(move.hitProbability * 100, 1)}%</span>
-          </button>
-        ))}
+        {moves.map((move, index) => {
+          const unlikely = move.likelihood === "unlikely";
+          return (
+            <button
+              className={move.word === inspectedWord ? "move-row inspected" : "move-row"}
+              type="button"
+              key={move.word}
+              aria-current={move.word === inspectedWord ? "true" : undefined}
+              title={unlikelyMoveTitle(move)}
+              onFocus={() => onInspectMove(move)}
+              onMouseEnter={() => onInspectMove(move)}
+              onPointerEnter={() => onInspectMove(move)}
+              onClick={() => {
+                onInspectMove(move);
+                onPickWord(move.word);
+              }}
+            >
+              <span className="rank">{index + 1}</span>
+              <span className={unlikely ? "move-word unlikely" : "move-word"}>
+                {formatWord(move.word)}
+                <small>{unlikely ? "odmiana" : move.isCandidate ? "kandydat" : "info"}</small>
+              </span>
+              <span>{formatScore(move.entropy, 3)}</span>
+              <span>{move.worstBucket.toLocaleString("pl-PL")}</span>
+              <span>{formatScore(move.averageBucket, 1)}</span>
+              <span>{formatScore(move.hitProbability * 100, 1)}%</span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );

@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { evaluateMove, solveState } from "../domain/solver";
+import { evaluateMove, pickSolverMove, simulateSolverHistogram, solveState } from "../domain/solver";
 import { scoreMove } from "../domain/analysis";
+import type { SolverStrategySnapshot } from "../types/wordle";
 
 describe("solver", () => {
   const words = ["trefl", "trela", "stare", "krety"];
+  const strategy: SolverStrategySnapshot = {
+    candidateOnly: true,
+    exact: true,
+    sortKey: "entropy",
+  };
 
   it("returns a bounded expected-turn estimate with a best move", () => {
     const result = solveState(words.slice(0, 2), words, { depth: 1, branchLimit: 4 });
@@ -21,5 +27,66 @@ describe("solver", () => {
     expect(evaluation.skillScore).toBeGreaterThanOrEqual(0);
     expect(evaluation.skillScore).toBeLessThanOrEqual(100);
     expect(evaluation.luckScore).toBe(72);
+  });
+
+  it("counts the start word as attempt one and keeps unresolved answers in the overflow bucket", async () => {
+    const result = await simulateSolverHistogram(["stare", "trefl"], words, {
+      startWord: "stare",
+      maxAttempts: 1,
+      strategy,
+    });
+
+    expect(result.histogram.find((bucket) => bucket.attempts === 1)?.count).toBe(1);
+    expect(result.histogram.find((bucket) => bucket.attempts === "unsolved")?.count).toBe(1);
+    expect(result.processedAnswers).toBe(2);
+  });
+
+  it("solves a one-candidate bucket with that candidate on the next attempt", async () => {
+    const result = await simulateSolverHistogram(["stare", "trefl"], words, {
+      startWord: "stare",
+      maxAttempts: 2,
+      strategy,
+    });
+
+    expect(result.histogram.find((bucket) => bucket.attempts === 1)?.count).toBe(1);
+    expect(result.histogram.find((bucket) => bucket.attempts === 2)?.count).toBe(1);
+    expect(result.unsolvedAnswers).toBe(0);
+  });
+
+  it("keeps histogram counts equal to the tested answer count", async () => {
+    const result = await simulateSolverHistogram(["stare", "trefl", "trela"], words, {
+      startWord: "stare",
+      maxAttempts: 3,
+      strategy,
+    });
+
+    const total = result.histogram.reduce((sum, bucket) => sum + bucket.count, 0);
+    expect(total).toBe(3);
+    expect(result.totalAnswers).toBe(3);
+  });
+
+  it("uses the configured strategy and avoids repeated non-terminal moves", async () => {
+    const chosenMove = pickSolverMove({
+      candidates: ["trefl", "trela"],
+      allowedGuesses: ["trefl", "trela", "stare"],
+      usedWords: new Set(["trefl"]),
+      strategy,
+    });
+    const result = await simulateSolverHistogram(["stare"], words, {
+      startWord: "stare",
+      maxAttempts: 2,
+      strategy: {
+        candidateOnly: false,
+        exact: false,
+        sortKey: "worstBucket",
+      },
+    });
+
+    expect(chosenMove).toBe("trela");
+    expect(result.strategy).toEqual({
+      candidateOnly: false,
+      exact: false,
+      sortKey: "worstBucket",
+    });
   });
 });

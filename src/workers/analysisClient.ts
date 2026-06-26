@@ -1,4 +1,9 @@
-import type { WorkerAnalyzeRequest, WorkerAnalyzeResponse } from "../types/wordle";
+import type {
+  WorkerAnalyzeResponse,
+  WorkerCancelRequest,
+  WorkerRankRequest,
+  WorkerSolveRequest,
+} from "../types/wordle";
 
 export function createAnalysisWorker(): Worker {
   return new Worker(new URL("./analysis.worker.ts", import.meta.url), { type: "module" });
@@ -6,6 +11,14 @@ export function createAnalysisWorker(): Worker {
 
 export type AnalysisWorkerMessageHandler = (message: WorkerAnalyzeResponse) => void;
 
-export function postRankRequest(worker: Worker, request: WorkerAnalyzeRequest): void {
+export function postRankRequest(worker: Worker, request: WorkerRankRequest): void {
+  worker.postMessage(request);
+}
+
+export function postSolveRequest(worker: Worker, request: WorkerSolveRequest): void {
+  worker.postMessage(request);
+}
+
+export function postCancelRequest(worker: Worker, request: WorkerCancelRequest): void {
   worker.postMessage(request);
 }

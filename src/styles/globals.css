@@ -178,7 +178,7 @@ button:not(:disabled):active {
 .secondary-button,
 .theme-toggle,
 .commit-button,
-.dictionary-form button {
+.dictionary-reload-button {
   min-height: 44px;
   border-radius: 12px;
   padding: 10px 14px;
@@ -191,7 +191,7 @@ button:not(:disabled):active {
 
 .primary-button:not(:disabled):hover,
 .commit-button:not(:disabled):hover,
-.dictionary-form button:not(:disabled):hover {
+.dictionary-reload-button:not(:disabled):hover {
   transform: translateY(-1px);
   filter: brightness(1.04);
   box-shadow: 0 14px 26px rgba(20, 28, 38, 0.18);
@@ -548,8 +548,7 @@ button:not(:disabled):active {
 }
 
 .row-word-input,
-.compact-input,
-.dictionary-form input {
+.compact-input {
   width: 100%;
   min-height: 44px;
   border: 1px solid var(--line);
@@ -562,8 +561,7 @@ button:not(:disabled):active {
 }
 
 .row-word-input:not(:disabled):hover,
-.compact-input:not(:disabled):hover,
-.dictionary-form input:not(:disabled):hover {
+.compact-input:not(:disabled):hover {
   border-color: var(--hover-border);
   background: color-mix(in srgb, var(--green) 4%, var(--surface));
 }
@@ -574,8 +572,7 @@ button:not(:disabled):active {
 }
 
 .row-word-input:focus,
-.compact-input:focus,
-.dictionary-form input:focus {
+.compact-input:focus {
   border-color: color-mix(in srgb, var(--green) 65%, var(--line));
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 15%, transparent);
 }
@@ -602,6 +599,176 @@ button:not(:disabled):active {
   transform: translateY(-1px);
   border: 1px solid color-mix(in srgb, var(--danger) 34%, transparent);
   background: color-mix(in srgb, var(--danger) 20%, transparent);
+}
+
+.solver-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.solver-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.solver-actions .secondary-button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.solver-message {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--surface-muted) 62%, transparent);
+  color: var(--muted);
+}
+
+.solver-message.success {
+  color: color-mix(in srgb, var(--green) 72%, var(--text));
+  background: color-mix(in srgb, var(--green) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--green) 24%, var(--line));
+}
+
+.solver-message.error {
+  color: color-mix(in srgb, var(--danger) 78%, var(--text));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--line));
+}
+
+.solver-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 0.32fr);
+  gap: 10px;
+}
+
+.solver-control {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.solver-control input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 12px;
+  font-weight: 900;
+}
+
+.solver-control:not(.compact) input {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.solver-control input:not(:disabled):hover {
+  border-color: var(--hover-border);
+  background: color-mix(in srgb, var(--green) 4%, var(--surface));
+}
+
+.solver-control input:focus {
+  border-color: color-mix(in srgb, var(--green) 65%, var(--line));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 15%, transparent);
+}
+
+.solver-strategy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-muted) 42%, var(--surface));
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.solver-strategy strong {
+  color: var(--text);
+  text-align: right;
+}
+
+.solver-histogram {
+  display: grid;
+  gap: 9px;
+}
+
+.solver-bar {
+  display: grid;
+  grid-template-columns: 34px minmax(120px, 1fr) minmax(54px, auto) minmax(52px, auto);
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+}
+
+.solver-bar-label {
+  color: var(--muted);
+  font-weight: 950;
+  text-align: right;
+}
+
+.solver-bar-track {
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-muted) 64%, var(--surface));
+  overflow: hidden;
+}
+
+.solver-bar-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), color-mix(in srgb, var(--green) 55%, var(--yellow)));
+  transition: width var(--motion-medium) var(--ease-out);
+}
+
+.solver-bar.unresolved .solver-bar-fill {
+  background: linear-gradient(90deg, var(--danger), color-mix(in srgb, var(--danger) 58%, var(--yellow)));
+}
+
+.solver-bar strong {
+  color: var(--text);
+  font-size: 14px;
+  text-align: right;
+}
+
+.solver-bar small {
+  color: var(--muted);
+  font-weight: 850;
+  text-align: right;
+}
+
+.solver-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.solver-summary span {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 10px;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.solver-summary strong {
+  display: block;
+  color: var(--text);
+  font-size: 18px;
 }
 
 .dictionary-panel {
@@ -647,10 +814,8 @@ button:not(:disabled):active {
   to { opacity: 1; }
 }
 
-.dictionary-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+.dictionary-reload-button {
+  width: 100%;
 }
 
 .metric-grid {
@@ -808,6 +973,9 @@ button:not(:disabled):active {
 }
 
 .word-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 8px 10px;
@@ -818,6 +986,21 @@ button:not(:disabled):active {
   position: relative;
   overflow: hidden;
   will-change: transform;
+}
+
+.word-chip.unlikely {
+  color: color-mix(in srgb, var(--muted) 86%, var(--text));
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--surface-muted) 62%, var(--surface));
+}
+
+.word-chip.unlikely small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0;
+  text-transform: lowercase;
 }
 
 .word-chip::after {
@@ -978,6 +1161,18 @@ button:not(:disabled):active {
   letter-spacing: 0.04em;
 }
 
+.move-word.unlikely {
+  color: color-mix(in srgb, var(--muted) 86%, var(--text));
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.move-word.unlikely small {
+  color: color-mix(in srgb, var(--muted) 92%, var(--text));
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
 .rank {
   color: var(--muted);
   font-weight: 900;
@@ -1113,8 +1308,7 @@ button:not(:disabled):active {
     padding-top: 24px;
   }
 
-  .header-actions,
-  .dictionary-form {
+  .header-actions {
     grid-template-columns: 1fr;
     width: 100%;
   }
@@ -1129,6 +1323,33 @@ button:not(:disabled):active {
 
   .mode-controls {
     grid-template-columns: 1fr;
+  }
+
+  .solver-actions,
+  .solver-controls,
+  .solver-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .solver-actions {
+    display: grid;
+  }
+
+  .solver-strategy {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .solver-strategy strong {
+    text-align: left;
+  }
+
+  .solver-bar {
+    grid-template-columns: 28px minmax(88px, 1fr) minmax(42px, auto);
+  }
+
+  .solver-bar small {
+    display: none;
   }
 
   .row-index,
@@ -1171,7 +1392,7 @@ button:not(:disabled):active {
   .secondary-button,
   .theme-toggle,
   .commit-button,
-  .dictionary-form button,
+  .dictionary-reload-button,
   .mode-button,
   .word-chip,
   .move-row,
@@ -1200,7 +1421,7 @@ button:not(:disabled):active {
   button:not(:disabled):active,
   .primary-button:not(:disabled):hover,
   .commit-button:not(:disabled):hover,
-  .dictionary-form button:not(:disabled):hover,
+  .dictionary-reload-button:not(:disabled):hover,
   .secondary-button:not(:disabled):hover,
   .theme-toggle:not(:disabled):hover,
   .mode-button:not(:disabled):hover,

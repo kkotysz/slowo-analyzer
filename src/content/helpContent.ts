@@ -22,11 +22,23 @@ export const HELP_SECTIONS: HelpSection[] = [
     title: "Słownik i cache",
     tag: "Dane",
     tone: "slate",
-    takeaway: "Po zmianie slowa.txt kliknij Wczytaj. Cache-buster doda się automatycznie.",
+    takeaway: "Po zmianie slowa.txt albo hasla.txt kliknij Wczytaj. Cache-buster doda się automatycznie.",
     body: [
-      "Aplikacja ładuje lokalny plik public/slowa.txt, a po pierwszym wczytaniu zapisuje słownik w cache przeglądarki.",
-      "Jeśli zmienisz slowa.txt, kliknij Wczytaj w panelu słownika. Aplikacja automatycznie doda cache-buster, więc nie trzeba dopisywać ?v=1 ręcznie.",
+      "Aplikacja ładuje lokalne pliki public/slowa.txt i public/hasla.txt, a po pierwszym wczytaniu zapisuje słownik w cache przeglądarki.",
+      "slowa.txt zawiera szeroką listę dopuszczalnych prób z SJP, hasla.txt zawiera możliwe odpowiedzi ograniczone do top 6000 słów z przecięcia SJP i KWJP według ARF, a answer-metadata.json oznacza odmiany wykryte przez PoliMorf.",
+      "Jeśli zmienisz pliki słownika, kliknij Wczytaj w panelu słownika. Aplikacja automatycznie doda cache-buster, więc nie trzeba dopisywać ?v=1 ręcznie.",
       "Słowa spoza słownika nie są dodawane do gry. Zobaczysz komunikat To nie jest słowo ze słownika.",
+    ],
+  },
+  {
+    title: "Odmiany i unlikely",
+    tag: "Filtr",
+    tone: "slate",
+    takeaway: "Ukryj unlikely domyślnie usuwa odmiany z kandydatów, rankingu, losowania i solvera.",
+    body: [
+      "Odmiana to słowo, które w PoliMorf występuje tylko jako forma innego lematu, np. narzędnik albo dopełniacz. Nie oznacza to rzadkości frekwencyjnej.",
+      "Gdy Ukryj unlikely jest włączone, takie hasła nie są brane jako zwykłe odpowiedzi ani kolejne ruchy strategii. Ręcznie wpisane hasło w symulacji nadal może zostać przeanalizowane.",
+      "Po wyłączeniu filtra odmiany wracają na listy i dostają badge odmiana z podpowiedzią lematu.",
     ],
   },
   {
@@ -78,6 +90,17 @@ export const HELP_SECTIONS: HelpSection[] = [
       "Gdy Dokładnie jest wyłączone, aplikacja używa szybkiego trybu: przy wielu kandydatach najpierw wybiera obiecujące słowa heurystyką literową, a dopiero potem liczy dla nich pełne metryki.",
       "Heurystyka liczy, w ilu aktualnych kandydatach występuje każda litera. Słowo dostaje punkty za unikalne litery, które często pojawiają się w pozostałych kandydatach, plus mały bonus za liczbę unikalnych liter.",
       "Gdy Dokładnie jest włączone, aplikacja pomija to przycinanie i liczy ranking dla pełniejszej puli. Jest to bardziej wiarygodne, ale wolniejsze na początku gry.",
+    ],
+  },
+  {
+    title: "Solver startowy",
+    tag: "Solver",
+    tone: "teal",
+    takeaway: "Sprawdza rozkład liczby prób dla wybranego słowa startowego.",
+    body: [
+      "Panel Solver startowy uruchamiasz ręcznie przyciskiem Start. Wpisane słowo jest pierwszą próbą, a limit prób obejmuje także ten ruch.",
+      "Solver testuje aktywną pulę haseł ze słownika odpowiedzi. Po każdym buckecie wybiera następne słowo według aktualnych ustawień rankingu: Tylko kandydaci, Dokładnie, Ukryj unlikely i aktywnej metryki sortowania.",
+      "Histogram pokazuje, ile haseł rozwiązało się w 1..n próbach. Słupek > n zbiera hasła nierozwiązane w zadanym limicie.",
     ],
   },
   {

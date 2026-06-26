@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import type { Word } from "../types/wordle";
+import type { AnswerMetadata, Word } from "../types/wordle";
+import { describeAnswerMetadata, isUnlikelyAnswer } from "../domain/answerMetadata";
 import { formatWord, normalizeWord } from "../domain/wordle";
 import { rankByLetterHeuristic } from "../domain/ranking";
 
 interface CandidatePanelProps {
   candidates: Word[];
+  answerMetadata?: AnswerMetadata;
   onPickWord: (word: Word) => void;
 }
 
@@ -12,7 +14,7 @@ const RENDER_LIMIT = 420;
 const RENDER_INCREMENT = 420;
 type CandidateSortMode = "relevance" | "alphabetical";
 
-export function CandidatePanel({ candidates, onPickWord }: CandidatePanelProps) {
+export function CandidatePanel({ candidates, answerMetadata, onPickWord }: CandidatePanelProps) {
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<CandidateSortMode>("relevance");
   const [visibleLimit, setVisibleLimit] = useState(RENDER_LIMIT);
@@ -63,11 +65,21 @@ export function CandidatePanel({ candidates, onPickWord }: CandidatePanelProps) 
         </div>
       </div>
       <div className="word-chip-list">
-        {visibleWords.map((word) => (
-          <button type="button" className="word-chip" key={word} onClick={() => onPickWord(word)}>
-            {formatWord(word)}
-          </button>
-        ))}
+        {visibleWords.map((word) => {
+          const unlikely = isUnlikelyAnswer(answerMetadata, word);
+          return (
+            <button
+              type="button"
+              className={unlikely ? "word-chip unlikely" : "word-chip"}
+              key={word}
+              title={describeAnswerMetadata(answerMetadata, word)}
+              onClick={() => onPickWord(word)}
+            >
+              <span>{formatWord(word)}</span>
+              {unlikely ? <small>odmiana</small> : null}
+            </button>
+          );
+        })}
       </div>
       {visibleWords.length < filtered.length ? (
         <button

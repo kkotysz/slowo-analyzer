@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "./AppShell";
 import { analyzeGame, candidatesAfterGuesses, computeLuckScore } from "../domain/analysis";
+import {
+  annotateMoveWithAnswerMetadata,
+  isUnlikelyAnswer,
+} from "../domain/answerMetadata";
 import { loadWordLists } from "../domain/dictionary";
 import { EXAMPLE_GAME } from "../domain/examples";
 import { commitWordToGame, pickRandomAnswer, truncateGuesses, updateGuessForMode } from "../domain/game";
+import { isOpeningMoveRequest, preloadOpeningMoves, readPrecomputedOpeningMoves } from "../domain/openingMoves";
 import {
   createEmptyGuess,
   guessIsComplete,
@@ -17,10 +22,10 @@ import { CandidatePanel } from "../components/CandidatePanel";
 import { DictionaryStatus } from "../components/DictionaryStatus";
 import { GameSummary } from "../components/GameSummary";
 import { MoveDetailsPanel } from "../components/MoveDetailsPanel";
+import { SolverPanel } from "../components/SolverPanel";
 import { WordGrid } from "../components/WordGrid";
-import { readDictionaryUrl, saveDictionaryUrl } from "../storage/dictionaryCache";
 import { readStoredGame, readStoredTheme, writeStoredGame, writeStoredTheme } from "../storage/gamePersistence";
-import { createAnalysisWorker, postRankRequest } from "../workers/analysisClient";
+import { createAnalysisWorker, postCancelRequest, postRankRequest, postSolveRequest } from "../workers/analysisClient";
 import type {
   AppMode,
   BucketSummary,
@@ -29,6 +34,8 @@ import type {
   MoveDetailsStats,
   MoveScore,
   RankingSortKey,
+  SolverHistogramResult,
+  SolverStrategySnapshot,
   Word,
   WordLists,
   WorkerAnalyzeResponse,
@@ -76,12 +83,12 @@ export function App() {
   const [wordLists, setWordLists] = useState<WordLists>({
     allowedGuesses: [],
     possibleAnswers: [],
+    answerMetadata: {},
     guesses: [],
     answers: [],
     mode: "shared",
   });
   const [dictionaryStatus, setDictionaryStatus] = useState<DictionaryStatusModel>(INITIAL_STATUS);
-  const [dictionaryUrl, setDictionaryUrl] = useState(() => readDictionaryUrl());
   const [mode, setMode] = useState<AppMode>(initialGame.mode);
   const [answer, setAnswer] = useState<Word>(initialGame.answer);
   const [guesses, setGuesses] = useState<Guess[]>(initialGame.guesses);
@@ -89,13 +96,22 @@ export function App() {
   const [candidateOnly, setCandidateOnly] = useState(true);
   const [exactRanking, setExactRanking] = useState(false);
   const [rankingSortKey, setRankingSortKey] = useState<RankingSortKey>("entropy");
+  const [hideUnlikelyAnswers, setHideUnlikelyAnswers] = useState(true);
   const [moves, setMoves] = useState<MoveScore[]>([]);
   const [selectedMove, setSelectedMove] = useState<MoveScore | undefined>();
   const [workerStatus, setWorkerStatus] = useState<WorkerStatus>("idle");
   const [workerProgress, setWorkerProgress] = useState(0);
+  const [solverStartWord, setSolverStartWord] = useState<Word>("");
+  const [solverMaxAttempts, setSolverMaxAttempts] = useState(6);
+  const [solverStatus, setSolverStatus] = useState<WorkerStatus>("idle");
+  const [solverProgress, setSolverProgress] = useState(0);
+  const [solverResult, setSolverResult] = useState<SolverHistogramResult | undefined>();
+  const [solverMessage, setSolverMessage] = useState("");
   const [message, setMessage] = useState("");
   const requestIdRef = useRef(0);
+  const solverRequestIdRef = useRef(0);
   const workerRef = useRef<Worker | null>(null);
+  const solverWorkerRef = useRef<Worker | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -107,6 +123,7 @@ export function App() {
     loadWordLists().then(({ lists, status }) => {
       setWordLists(lists);
       setDictionaryStatus(status);
+      preloadOpeningMoves();
     });
   }, []);
 
@@ -117,17 +134,29 @@ export function App() {
   useEffect(() => {
     return () => {
       workerRef.current?.terminate();
+      solverWorkerRef.current?.terminate();
     };
   }, []);
 
   const completeGuesses = useMemo(() => guesses.filter(guessIsComplete), [guesses]);
+  const answerMetadata = wordLists.answerMetadata;
+  const activePossibleAnswers = useMemo(() => (
+    hideUnlikelyAnswers
+      ? wordLists.possibleAnswers.filter((word) => !isUnlikelyAnswer(answerMetadata, word))
+      : wordLists.possibleAnswers
+  ), [answerMetadata, hideUnlikelyAnswers, wordLists.possibleAnswers]);
+  const activeAllowedGuesses = useMemo(() => (
+    hideUnlikelyAnswers
+      ? wordLists.allowedGuesses.filter((word) => !isUnlikelyAnswer(answerMetadata, word))
+      : wordLists.allowedGuesses
+  ), [answerMetadata, hideUnlikelyAnswers, wordLists.allowedGuesses]);
   const effectiveAnswers = useMemo(() => {
     const normalizedAnswer = normalizeWord(answer);
-    if (mode !== "simulation" || !isFiveLetterWord(normalizedAnswer) || wordLists.possibleAnswers.includes(normalizedAnswer)) {
-      return wordLists.possibleAnswers;
+    if (mode !== "simulation" || !isFiveLetterWord(normalizedAnswer) || activePossibleAnswers.includes(normalizedAnswer)) {
+      return activePossibleAnswers;
     }
-    return [...wordLists.possibleAnswers, normalizedAnswer];
-  }, [answer, mode, wordLists.possibleAnswers]);
+    return [...activePossibleAnswers, normalizedAnswer];
+  }, [activePossibleAnswers, answer, mode]);
   const analysisSteps = useMemo(
     () => analyzeGame(completeGuesses, effectiveAnswers),
     [completeGuesses, effectiveAnswers],
@@ -136,6 +165,29 @@ export function App() {
     () => candidatesAfterGuesses(completeGuesses, effectiveAnswers),
     [completeGuesses, effectiveAnswers],
   );
+  const visibleMoves = useMemo(() => moves
+    .map((move) => annotateMoveWithAnswerMetadata(move, answerMetadata))
+    .filter((move) => !hideUnlikelyAnswers || !isUnlikelyAnswer(answerMetadata, move.word))
+    .slice(0, RANK_LIMIT), [answerMetadata, hideUnlikelyAnswers, moves]);
+  const allowedGuessSet = useMemo(() => new Set(wordLists.allowedGuesses), [wordLists.allowedGuesses]);
+  const solverStrategy = useMemo((): SolverStrategySnapshot => ({
+    candidateOnly,
+    exact: exactRanking,
+    sortKey: rankingSortKey,
+  }), [candidateOnly, exactRanking, rankingSortKey]);
+  const normalizedSolverStartWord = normalizeWord(solverStartWord);
+  const solverCanStart = (
+    dictionaryStatus.state !== "loading" &&
+    activePossibleAnswers.length > 0 &&
+    isFiveLetterWord(normalizedSolverStartWord) &&
+    allowedGuessSet.has(normalizedSolverStartWord) &&
+    solverMaxAttempts >= 1
+  );
+  useEffect(() => {
+    if (selectedMove && hideUnlikelyAnswers && isUnlikelyAnswer(answerMetadata, selectedMove.word)) {
+      setSelectedMove(undefined);
+    }
+  }, [answerMetadata, hideUnlikelyAnswers, selectedMove]);
   const selectedMoveDetails = useMemo((): { stats?: MoveDetailsStats; buckets?: BucketSummary[] } => {
     if (!selectedMove) return {};
 
@@ -178,19 +230,21 @@ export function App() {
       return;
     }
 
-    if (!workerRef.current) {
-      workerRef.current = createAnalysisWorker();
-    }
-
-    const worker = workerRef.current;
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
-    setWorkerStatus("running");
+    setWorkerStatus("idle");
     setWorkerProgress(0);
+    let cancelled = false;
 
-    worker.onmessage = (event: MessageEvent<WorkerAnalyzeResponse>) => {
+    const handleWorkerMessage = (event: MessageEvent<WorkerAnalyzeResponse>) => {
       const response = event.data;
       if (response.requestId !== requestIdRef.current) return;
+      if (
+        response.type === "solver-running" ||
+        response.type === "solver-done" ||
+        response.type === "solver-cancelled" ||
+        response.type === "solver-error"
+      ) return;
 
       if (response.type === "running") {
         setWorkerStatus("running");
@@ -208,21 +262,64 @@ export function App() {
       }
     };
 
-    postRankRequest(worker, {
-      type: "rank",
+    const workerRequest = {
+      type: "rank" as const,
       requestId,
       candidates,
-      allowedGuesses: wordLists.allowedGuesses,
-      limit: RANK_LIMIT,
+      allowedGuesses: activeAllowedGuesses,
+      limit: hideUnlikelyAnswers ? RANK_LIMIT * 2 : RANK_LIMIT,
       candidateOnly,
       sortKey: rankingSortKey,
       exact: exactRanking,
-    });
+      answerProfile: hideUnlikelyAnswers ? "likelyOnly" as const : "all" as const,
+      dictionaryVersion: wordLists.dictionaryVersion,
+    };
+    const openingRequest = {
+      ...workerRequest,
+      completeGuessCount: completeGuesses.length,
+    };
+
+    const startWorker = () => {
+      if (cancelled || requestId !== requestIdRef.current) return;
+      if (!workerRef.current) {
+        workerRef.current = createAnalysisWorker();
+      }
+      const worker = workerRef.current;
+      worker.onmessage = handleWorkerMessage;
+      postRankRequest(worker, workerRequest);
+    };
+
+    if (isOpeningMoveRequest(openingRequest)) {
+      if (moves.length) setWorkerStatus("done");
+      readPrecomputedOpeningMoves(openingRequest).then((precomputedMoves) => {
+        if (cancelled || requestId !== requestIdRef.current) return;
+        if (precomputedMoves) {
+          setMoves(precomputedMoves);
+          setWorkerStatus("done");
+          setWorkerProgress(1);
+          return;
+        }
+        setWorkerStatus(moves.length ? "done" : "idle");
+        setWorkerProgress(moves.length ? 1 : 0);
+      });
+    } else {
+      startWorker();
+    }
 
     return () => {
+      cancelled = true;
       requestIdRef.current = requestId;
     };
-  }, [candidateOnly, candidates, exactRanking, rankingSortKey, wordLists.allowedGuesses]);
+  }, [
+    candidateOnly,
+    candidates,
+    completeGuesses.length,
+    exactRanking,
+    hideUnlikelyAnswers,
+    rankingSortKey,
+    activeAllowedGuesses,
+    wordLists.dictionaryVersion,
+  ]);
 
   function applyGameCommand(result: ReturnType<typeof commitWordToGame>): void {
     setGuesses(result.nextGuesses);
@@ -269,7 +366,7 @@ export function App() {
   }
 
   function loadRandomAnswer(): void {
-    const randomAnswer = pickRandomAnswer(wordLists);
+    const randomAnswer = pickRandomAnswer({ possibleAnswers: activePossibleAnswers });
     if (!randomAnswer) {
       setMessage("Brak słów w słowniku odpowiedzi.");
       return;
@@ -304,6 +401,93 @@ export function App() {
       setWordLists(lists);
       setDictionaryStatus(status);
     });
+  }
+
+  function updateSolverStartWord(word: Word): void {
+    setSolverStartWord(normalizeWord(word));
+    if (solverStatus !== "running") setSolverMessage("");
+  }
+
+  function updateSolverMaxAttempts(value: number): void {
+    setSolverMaxAttempts(Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 1);
+    if (solverStatus !== "running") setSolverMessage("");
+  }
+
+  function handleSolverMessage(event: MessageEvent<WorkerAnalyzeResponse>): void {
+    const response = event.data;
+    if (response.requestId !== solverRequestIdRef.current) return;
+
+    if (response.type === "solver-running") {
+      setSolverStatus("running");
+      setSolverProgress(response.progress);
+      setSolverResult(response.result);
+      setSolverMessage("");
+    } else if (response.type === "solver-done") {
+      setSolverStatus("done");
+      setSolverProgress(1);
+      setSolverResult(response.result);
+      setSolverMessage("Solver zakończył liczenie.");
+    } else if (response.type === "solver-cancelled") {
+      setSolverStatus("cancelled");
+      setSolverMessage("Przerwano liczenie solvera.");
+    } else if (response.type === "solver-error") {
+      setSolverStatus("error");
+      setSolverMessage(response.message);
+    }
+  }
+
+  function startSolver(): void {
+    const startWord = normalizeWord(solverStartWord);
+    if (!isFiveLetterWord(startWord)) {
+      setSolverStatus("error");
+      setSolverMessage("Wpisz pięcioliterowe słowo.");
+      return;
+    }
+    if (!allowedGuessSet.has(startWord)) {
+      setSolverStatus("error");
+      setSolverMessage("To nie jest słowo ze słownika prób.");
+      return;
+    }
+    if (!activePossibleAnswers.length) {
+      setSolverStatus("error");
+      setSolverMessage("Brak haseł do symulacji.");
+      return;
+    }
+
+    const requestId = solverRequestIdRef.current + 1;
+    solverRequestIdRef.current = requestId;
+    if (!solverWorkerRef.current) {
+      solverWorkerRef.current = createAnalysisWorker();
+    }
+    const worker = solverWorkerRef.current;
+    worker.onmessage = handleSolverMessage;
+    setSolverStatus("running");
+    setSolverProgress(0);
+    setSolverResult(undefined);
+    setSolverMessage("Liczenie solvera...");
+    postSolveRequest(worker, {
+      type: "solve",
+      requestId,
+      startWord,
+      maxAttempts: solverMaxAttempts,
+      answers: activePossibleAnswers,
+      allowedGuesses: activeAllowedGuesses,
+      strategy: solverStrategy,
+      dictionaryVersion: wordLists.dictionaryVersion,
+    });
+  }
+
+  function stopSolver(): void {
+    const requestId = solverRequestIdRef.current;
+    if (solverWorkerRef.current) {
+      postCancelRequest(solverWorkerRef.current, { type: "cancel", requestId });
+      solverWorkerRef.current.terminate();
+      solverWorkerRef.current = null;
+    }
+    solverRequestIdRef.current = requestId + 1;
+    setSolverStatus("cancelled");
+    setSolverProgress(0);
+    setSolverMessage("Przerwano liczenie solvera.");
   }
 
   return (
@@ -344,7 +528,7 @@ export function App() {
                 type="button"
                 className="mode-button"
                 onClick={loadRandomAnswer}
-                disabled={!wordLists.possibleAnswers.length}
+                disabled={!activePossibleAnswers.length}
               >
                 Losowe hasło
               </button>
@@ -379,17 +563,32 @@ export function App() {
             />
           </section>
 
-          <CandidatePanel candidates={candidates} onPickWord={pickWord} />
+          <SolverPanel
+            startWord={solverStartWord}
+            maxAttempts={solverMaxAttempts}
+            answerCount={activePossibleAnswers.length}
+            status={solverStatus}
+            progress={solverProgress}
+            result={solverResult}
+            message={solverMessage}
+            strategy={solverStrategy}
+            canStart={solverCanStart}
+            onStartWordChange={updateSolverStartWord}
+            onMaxAttemptsChange={updateSolverMaxAttempts}
+            onStart={startSolver}
+            onStop={stopSolver}
+          />
+
+          <CandidatePanel
+            candidates={candidates}
+            answerMetadata={answerMetadata}
+            onPickWord={pickWord}
+          />
         </div>
 
         <aside className="side-column">
           <DictionaryStatus
             status={dictionaryStatus}
-            url={dictionaryUrl}
-            onUrlChange={(url) => {
-              saveDictionaryUrl(url);
-              setDictionaryUrl(url);
-            }}
             onReload={reloadDictionary}
           />
 
@@ -397,21 +596,23 @@ export function App() {
             guesses={completeGuesses}
             steps={analysisSteps}
             candidateCount={candidates.length}
-            bestMove={moves[0]}
+            bestMove={visibleMoves[0]}
             onPickWord={pickWord}
             onSelectStep={selectHistoryStep}
           />
 
           <BestMovesPanel
-            moves={moves}
+            moves={visibleMoves}
             status={workerStatus}
             progress={workerProgress}
             candidateOnly={candidateOnly}
             exactRanking={exactRanking}
+            hideUnlikelyAnswers={hideUnlikelyAnswers}
             sortKey={rankingSortKey}
             inspectedWord={selectedMove?.word}
             onCandidateOnlyChange={setCandidateOnly}
             onExactRankingChange={setExactRanking}
+            onHideUnlikelyAnswersChange={setHideUnlikelyAnswers}
             onSortKeyChange={setRankingSortKey}
             onPickWord={pickWord}
             onInspectMove={setSelectedMove}

@@ -6,9 +6,13 @@ import type { DictionaryLists } from "../types/wordle";
 const dictionary: DictionaryLists = {
   allowedGuesses: ["stare", "trefl"],
   possibleAnswers: ["trefl"],
+  answerMetadata: {
+    trefl: { likelihood: "likely" },
+  },
   guesses: ["stare", "trefl"],
   answers: ["trefl"],
-  mode: "shared",
+  mode: "separate",
+  dictionaryVersion: "test",
 };
 
 describe("game domain", () => {

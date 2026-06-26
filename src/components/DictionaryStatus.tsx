@@ -1,16 +1,11 @@
-import { useState } from "react";
 import type { DictionaryStatus as DictionaryStatusModel } from "../types/wordle";
 
 interface DictionaryStatusProps {
   status: DictionaryStatusModel;
-  url: string;
-  onUrlChange: (url: string) => void;
   onReload: () => void;
 }
 
-export function DictionaryStatus({ status, url, onUrlChange, onReload }: DictionaryStatusProps) {
-  const [draftUrl, setDraftUrl] = useState(url);
-
+export function DictionaryStatus({ status, onReload }: DictionaryStatusProps) {
   return (
     <section className="panel dictionary-panel">
       <div className="dictionary-status">
@@ -21,22 +16,9 @@ export function DictionaryStatus({ status, url, onUrlChange, onReload }: Diction
           {status.source ? <small>{status.cached ? "cache" : status.offline ? "offline" : "źródło"}: {status.source}</small> : null}
         </div>
       </div>
-      <form
-        className="dictionary-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onUrlChange(draftUrl);
-          onReload();
-        }}
-      >
-        <input
-          value={draftUrl}
-          onChange={(event) => setDraftUrl(event.target.value)}
-          placeholder="Opcjonalny URL słownika"
-          aria-label="URL słownika"
-        />
-        <button type="submit">Wczytaj</button>
-      </form>
+      <button type="button" className="dictionary-reload-button" onClick={onReload}>
+        Wczytaj
+      </button>
     </section>
   );
 }

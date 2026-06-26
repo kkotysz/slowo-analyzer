@@ -14,6 +14,12 @@ export type AppMode = "manual" | "simulation";
 
 export type DictionaryMode = "shared" | "separate";
 
+export type AnswerLikelihood = "likely" | "unlikely";
+
+export type AnswerLikelihoodReason = "inflection";
+
+export type AnswerProfile = "all" | "likelyOnly";
+
 export type RankingSortKey =
   | "entropy"
   | "worstBucket"
@@ -31,6 +37,7 @@ export interface Guess {
 export interface DictionaryLists {
   allowedGuesses: Word[];
   possibleAnswers: Word[];
+  answerMetadata: AnswerMetadata;
   guesses: Word[];
   answers: Word[];
   mode: DictionaryMode;
@@ -38,9 +45,26 @@ export interface DictionaryLists {
   validatedAt?: number;
   rejectedCount?: number;
   rawCount?: number;
+  dictionaryVersion?: string;
 }
 
 export type WordLists = DictionaryLists;
+
+export interface AnswerMetadataEntry {
+  likelihood: AnswerLikelihood;
+  reason?: AnswerLikelihoodReason;
+  lemmas?: Word[];
+}
+
+export type AnswerMetadata = Record<Word, AnswerMetadataEntry>;
+
+export interface AnswerMetadataFile {
+  dictionaryVersion: string;
+  generatedAt?: string;
+  source?: string;
+  answerCount: number;
+  entries: AnswerMetadata;
+}
 
 export interface BucketSummary {
   pattern: string;
@@ -71,6 +95,32 @@ export interface MoveScore {
   buckets: Record<string, number>;
   bucketSummaries: BucketSummary[];
   currentBucket?: BucketSummary;
+  likelihood?: AnswerLikelihood;
+  likelihoodReason?: AnswerLikelihoodReason;
+  lemmas?: Word[];
+}
+
+export interface PrecomputedOpeningMoveRankings {
+  candidateOnly: Partial<Record<RankingSortKey, MoveScore[]>>;
+  allMoves: Partial<Record<RankingSortKey, MoveScore[]>>;
+}
+
+export interface PrecomputedOpeningMoves {
+  dictionaryVersion: string;
+  guessCount: number;
+  answerCount: number;
+  likelyGuessCount?: number;
+  likelyAnswerCount?: number;
+  firstGuess?: Word;
+  lastGuess?: Word;
+  firstLikelyGuess?: Word;
+  lastLikelyGuess?: Word;
+  firstAnswer: Word;
+  lastAnswer: Word;
+  firstLikelyAnswer?: Word;
+  lastLikelyAnswer?: Word;
+  rankings: PrecomputedOpeningMoveRankings;
+  likelyOnlyRankings?: PrecomputedOpeningMoveRankings;
 }
 
 export interface MoveDetailsStats {
@@ -96,6 +146,31 @@ export interface SolverResult {
   bestMove?: MoveScore;
 }
 
+export interface SolverStrategySnapshot {
+  candidateOnly: boolean;
+  exact: boolean;
+  sortKey: RankingSortKey;
+}
+
+export interface SolverHistogramBucket {
+  attempts: number | "unsolved";
+  label: string;
+  count: number;
+  percentage: number;
+}
+
+export interface SolverHistogramResult {
+  startWord: Word;
+  maxAttempts: number;
+  totalAnswers: number;
+  processedAnswers: number;
+  solvedAnswers: number;
+  unsolvedAnswers: number;
+  averageAttempts: number;
+  strategy: SolverStrategySnapshot;
+  histogram: SolverHistogramBucket[];
+}
+
 export interface DictionaryStatus {
   state: "idle" | "loading" | "ready" | "error";
   title: string;
@@ -114,7 +189,7 @@ export interface GameState {
   hardMode: boolean;
 }
 
-export interface WorkerAnalyzeRequest {
+export interface WorkerRankRequest {
   type: "rank";
   requestId: number;
   candidates: Word[];
@@ -123,9 +198,29 @@ export interface WorkerAnalyzeRequest {
   candidateOnly: boolean;
   sortKey: RankingSortKey;
   exact: boolean;
+  answerProfile?: AnswerProfile;
+  dictionaryVersion?: string;
 }
 
-export type WorkerAnalyzeResponse =
+export interface WorkerSolveRequest {
+  type: "solve";
+  requestId: number;
+  startWord: Word;
+  maxAttempts: number;
+  answers: Word[];
+  allowedGuesses: Word[];
+  strategy: SolverStrategySnapshot;
+  dictionaryVersion?: string;
+}
+
+export interface WorkerCancelRequest {
+  type: "cancel";
+  requestId: number;
+}
+
+export type WorkerAnalyzeRequest = WorkerRankRequest | WorkerSolveRequest | WorkerCancelRequest;
+
+export type WorkerRankResponse =
   | {
       type: "running";
       requestId: number;
@@ -145,6 +240,30 @@ export type WorkerAnalyzeResponse =
       requestId: number;
       message: string;
     };
+
+export type WorkerSolveResponse =
+  | {
+      type: "solver-running";
+      requestId: number;
+      progress: number;
+      result: SolverHistogramResult;
+    }
+  | {
+      type: "solver-done";
+      requestId: number;
+      result: SolverHistogramResult;
+    }
+  | {
+      type: "solver-cancelled";
+      requestId: number;
+    }
+  | {
+      type: "solver-error";
+      requestId: number;
+      message: string;
+    };
+
+export type WorkerAnalyzeResponse = WorkerRankResponse | WorkerSolveResponse;
 
 export type GameCommandStatus = "ok" | "error";
 

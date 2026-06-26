@@ -1,18 +1,30 @@
-import type { DictionaryLists, DictionaryStatus, Word } from "../types/wordle";
-import { readCachedDictionary, readDictionaryUrl, writeCachedDictionary } from "../storage/dictionaryCache";
+import type { AnswerMetadata, DictionaryLists, DictionaryStatus, Word } from "../types/wordle";
+import {
+  countUnlikelyAnswers,
+  createLikelyAnswerMetadata,
+  parseAnswerMetadataText,
+} from "./answerMetadata";
+import { DICTIONARY_VERSION } from "./dictionaryMetadata";
+import { readCachedDictionary, writeCachedDictionary } from "../storage/dictionaryCache";
 import { isFiveLetterWord, normalizeWord } from "./wordle";
 
-const PUBLIC_DICTIONARY_URL = "/slowa.txt";
-const MIN_FULL_DICTIONARY_WORDS = 1000;
-const REMOTE_DICTIONARY_URLS = [
-  "https://raw.githubusercontent.com/kkrypt0nn/wordlists/main/wordlists/languages/polish.txt",
-  "https://raw.githubusercontent.com/turekj/msc/master/CheatAR/development/server/word-dictionary-importer/src/main/resources/scrabble-polish-words.txt",
-];
+const PUBLIC_GUESSES_URL = "/slowa.txt";
+const PUBLIC_ANSWERS_URL = "/hasla.txt";
+const PUBLIC_METADATA_URL = "/answer-metadata.json";
+const PUBLIC_DICTIONARY_SOURCE = `${PUBLIC_GUESSES_URL} + ${PUBLIC_ANSWERS_URL} + ${PUBLIC_METADATA_URL}`;
+const MIN_FULL_GUESS_WORDS = 20000;
+const MIN_FULL_ANSWER_WORDS = 5000;
 
 export interface DictionaryValidationReport {
   words: Word[];
   rawCount: number;
   rejectedCount: number;
+}
+
+export interface SeparateDictionaryValidationReport {
+  allowedGuesses: DictionaryValidationReport;
+  possibleAnswers: DictionaryValidationReport;
+  filteredAnswerCount: number;
 }
 
 export const FALLBACK_WORDS = validateDictionaryText(`
@@ -28,11 +40,13 @@ function createSharedDictionaryLists(
   words: readonly Word[],
   source: string,
   report?: Pick<DictionaryValidationReport, "rawCount" | "rejectedCount">,
+  answerMetadata: AnswerMetadata = createLikelyAnswerMetadata(words),
 ): DictionaryLists {
   const shared = [...words];
   return {
     allowedGuesses: shared,
     possibleAnswers: shared,
+    answerMetadata,
     guesses: shared,
     answers: shared,
     mode: "shared",
@@ -40,6 +54,30 @@ function createSharedDictionaryLists(
     validatedAt: Date.now(),
     rejectedCount: report?.rejectedCount ?? 0,
     rawCount: report?.rawCount ?? words.length,
+    dictionaryVersion: DICTIONARY_VERSION,
+  };
+}
+
+export function createSeparateDictionaryLists(
+  report: SeparateDictionaryValidationReport,
+  source: string,
+  answerMetadata: AnswerMetadata = createLikelyAnswerMetadata(report.possibleAnswers.words),
+): DictionaryLists {
+  const allowedGuesses = [...report.allowedGuesses.words];
+  const possibleAnswers = [...report.possibleAnswers.words];
+
+  return {
+    allowedGuesses,
+    possibleAnswers,
+    answerMetadata,
+    guesses: allowedGuesses,
+    answers: possibleAnswers,
+    mode: "separate",
+    source,
+    validatedAt: Date.now(),
+    rejectedCount: report.allowedGuesses.rejectedCount + report.possibleAnswers.rejectedCount,
+    rawCount: report.allowedGuesses.rawCount + report.possibleAnswers.rawCount,
+    dictionaryVersion: DICTIONARY_VERSION,
   };
 }
 
@@ -66,16 +104,61 @@ export function validateDictionaryText(text: string): DictionaryValidationReport
   return validateDictionaryWords(text.split(/\r?\n|\s+/));
 }
 
+export function validateSeparateDictionaryText(
+  guessesText: string,
+  answersText: string,
+): SeparateDictionaryValidationReport {
+  const allowedGuesses = validateDictionaryText(guessesText);
+  const allowedSet = new Set(allowedGuesses.words);
+  const rawAnswers = validateDictionaryText(answersText);
+  const possibleAnswers = rawAnswers.words.filter((word) => allowedSet.has(word));
+  const filteredAnswerCount = rawAnswers.words.length - possibleAnswers.length;
+
+  return {
+    allowedGuesses,
+    possibleAnswers: {
+      ...rawAnswers,
+      words: possibleAnswers,
+      rejectedCount: rawAnswers.rejectedCount + filteredAnswerCount,
+    },
+    filteredAnswerCount,
+  };
+}
+
 export function parseDictionaryText(text: string): string[] {
   return validateDictionaryText(text).words;
 }
 
-export function createDictionaryFetchUrl(source: string, forceRefresh: boolean, token = Date.now().toString()): string {
-  if (!forceRefresh) return source;
+function appendQueryParam(source: string, key: string, value: string): string {
   const [urlWithoutHash, hash = ""] = source.split("#", 2);
   const separator = urlWithoutHash.includes("?") ? "&" : "?";
-  const refreshed = `${urlWithoutHash}${separator}_slowo_refresh=${encodeURIComponent(token)}`;
-  return hash ? `${refreshed}#${hash}` : refreshed;
+  const updated = `${urlWithoutHash}${separator}${key}=${encodeURIComponent(value)}`;
+  return hash ? `${updated}#${hash}` : updated;
+}
+
+export function createDictionaryFetchUrl(source: string, forceRefresh: boolean, token = Date.now().toString()): string {
+  if (!forceRefresh) return source;
+  return appendQueryParam(source, "_slowo_refresh", token);
+}
+
+function formatDictionaryCounts(lists: Pick<DictionaryLists, "allowedGuesses" | "possibleAnswers">): string {
+  return `${lists.allowedGuesses.length.toLocaleString("pl-PL")} prób, ${lists.possibleAnswers.length.toLocaleString("pl-PL")} haseł`;
+}
+
+function formatDictionaryDetail(lists: Pick<DictionaryLists, "allowedGuesses" | "possibleAnswers" | "answerMetadata">): string {
+  const unlikelyCount = countUnlikelyAnswers(lists.answerMetadata, lists.possibleAnswers);
+  const unlikelyDetail = unlikelyCount
+    ? `, ${unlikelyCount.toLocaleString("pl-PL")} oznaczono jako odmiany`
+    : "";
+  return `${formatDictionaryCounts(lists)}${unlikelyDetail}`;
+}
+
+async function fetchDictionarySource(source: string, forceRefresh: boolean): Promise<string> {
+  const versionedSource = appendQueryParam(source, "_slowo_version", DICTIONARY_VERSION);
+  const fetchUrl = createDictionaryFetchUrl(versionedSource, forceRefresh);
+  const response = await fetch(fetchUrl, { cache: forceRefresh ? "reload" : "force-cache" });
+  if (!response.ok) throw new Error(`${source}: HTTP ${response.status}`);
+  return response.text();
 }
 
 export async function loadWordLists(options: { forceRefresh?: boolean } = {}): Promise<{
@@ -90,7 +173,7 @@ export async function loadWordLists(options: { forceRefresh?: boolean } = {}): P
         status: {
           state: "ready",
           title: "Słownik gotowy",
-          detail: `${cached.lists.allowedGuesses.length.toLocaleString("pl-PL")} słów z cache`,
+          detail: `${formatDictionaryDetail(cached.lists)} z cache`,
           source: cached.source,
           cached: true,
         },
@@ -98,37 +181,39 @@ export async function loadWordLists(options: { forceRefresh?: boolean } = {}): P
     }
   }
 
-  const configuredUrl = readDictionaryUrl();
-  const sources = options.forceRefresh && configuredUrl
-    ? [configuredUrl, PUBLIC_DICTIONARY_URL, ...REMOTE_DICTIONARY_URLS]
-    : [PUBLIC_DICTIONARY_URL, ...(configuredUrl ? [configuredUrl] : []), ...REMOTE_DICTIONARY_URLS];
-
   const errors: string[] = [];
 
-  for (const source of sources) {
-    try {
-      const fetchUrl = createDictionaryFetchUrl(source, Boolean(options.forceRefresh));
-      const response = await fetch(fetchUrl, { cache: options.forceRefresh ? "reload" : "force-cache" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const report = validateDictionaryText(await response.text());
-      if (report.words.length < MIN_FULL_DICTIONARY_WORDS) {
-        throw new Error(`za mało słów (${report.words.length})`);
-      }
-      const lists = createSharedDictionaryLists(report.words, source, report);
-      await writeCachedDictionary(lists, source);
-      return {
-        lists,
-        status: {
-          state: "ready",
-          title: "Słownik gotowy",
-          detail: `${report.words.length.toLocaleString("pl-PL")} słów, odrzucono ${report.rejectedCount.toLocaleString("pl-PL")}`,
-          source,
-          cached: source === PUBLIC_DICTIONARY_URL,
-        },
-      };
-    } catch (error) {
-      errors.push(`${source}: ${error instanceof Error ? error.message : String(error)}`);
+  try {
+    const [guessesText, answersText] = await Promise.all([
+      fetchDictionarySource(PUBLIC_GUESSES_URL, Boolean(options.forceRefresh)),
+      fetchDictionarySource(PUBLIC_ANSWERS_URL, Boolean(options.forceRefresh)),
+    ]);
+    const report = validateSeparateDictionaryText(guessesText, answersText);
+    if (report.allowedGuesses.words.length < MIN_FULL_GUESS_WORDS) {
+      throw new Error(`za mało prób (${report.allowedGuesses.words.length})`);
     }
+    if (report.possibleAnswers.words.length < MIN_FULL_ANSWER_WORDS) {
+      throw new Error(`za mało haseł (${report.possibleAnswers.words.length})`);
+    }
+    const metadataText = await fetchDictionarySource(PUBLIC_METADATA_URL, Boolean(options.forceRefresh)).catch(() => "");
+    const answerMetadata = parseAnswerMetadataText(
+      metadataText,
+      report.possibleAnswers.words,
+      DICTIONARY_VERSION,
+    );
+    const lists = createSeparateDictionaryLists(report, PUBLIC_DICTIONARY_SOURCE, answerMetadata);
+    await writeCachedDictionary(lists, PUBLIC_DICTIONARY_SOURCE);
+    return {
+      lists,
+      status: {
+        state: "ready",
+        title: "Słownik gotowy",
+        detail: `${formatDictionaryDetail(lists)}, odrzucono ${lists.rejectedCount?.toLocaleString("pl-PL") ?? "0"}`,
+        source: PUBLIC_DICTIONARY_SOURCE,
+      },
+    };
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
   }
 
   const lists = createSharedDictionaryLists(FALLBACK_WORDS, "fallback");

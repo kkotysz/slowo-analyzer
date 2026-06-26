@@ -36,10 +36,12 @@ describe("component interactions", () => {
         progress={1}
         candidateOnly
         exactRanking={false}
+        hideUnlikelyAnswers
         sortKey="entropy"
         inspectedWord="trier"
         onCandidateOnlyChange={vi.fn()}
         onExactRankingChange={vi.fn()}
+        onHideUnlikelyAnswersChange={vi.fn()}
         onSortKeyChange={vi.fn()}
         onPickWord={vi.fn()}
         onInspectMove={onInspectMove}
@@ -52,6 +54,29 @@ describe("component interactions", () => {
     fireEvent.pointerEnter(trierButton);
 
     expect(onInspectMove).toHaveBeenCalledWith(trier);
+  });
+
+  it("marks unlikely ranking moves as inflections", () => {
+    render(
+      <BestMovesPanel
+        moves={[{ ...makeMove("aferą", 2.2), likelihood: "unlikely", lemmas: ["afera"] }]}
+        status="done"
+        progress={1}
+        candidateOnly={false}
+        exactRanking={false}
+        hideUnlikelyAnswers={false}
+        sortKey="entropy"
+        onCandidateOnlyChange={vi.fn()}
+        onExactRankingChange={vi.fn()}
+        onHideUnlikelyAnswersChange={vi.fn()}
+        onSortKeyChange={vi.fn()}
+        onPickWord={vi.fn()}
+        onInspectMove={vi.fn()}
+      />,
+    );
+
+    const move = screen.getByRole("button", { name: /AFERĄ odmiana/i });
+    expect(move.getAttribute("title")).toBe("Odmiana: afera");
   });
 
   it("updates the move details strip for the inspected move", () => {
@@ -126,6 +151,22 @@ describe("component interactions", () => {
       "ABCDE",
       "ZZZZZ",
     ]);
+  });
+
+  it("marks unlikely candidates as inflections", () => {
+    render(
+      <CandidatePanel
+        candidates={["afera", "aferą"]}
+        answerMetadata={{
+          afera: { likelihood: "likely" },
+          aferą: { likelihood: "unlikely", reason: "inflection", lemmas: ["afera"] },
+        }}
+        onPickWord={vi.fn()}
+      />,
+    );
+
+    const candidate = screen.getByRole("button", { name: /AFERĄ odmiana/i });
+    expect(candidate.getAttribute("title")).toBe("Odmiana: afera");
   });
 
   it("submits the active word row when Enter is pressed in the input", () => {

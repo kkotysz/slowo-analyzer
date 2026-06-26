@@ -9,6 +9,6 @@ export default defineConfig({
       },
     },
     globals: true,
-    include: ["src/test/**/*.test.{ts,tsx}"],
+    include: ["src/test/**/*.test.{ts,tsx}", "scripts/**/*.test.mjs"],
   },
 });

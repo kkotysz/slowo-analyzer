@@ -1,8 +1,18 @@
-import type { MoveEvaluation, MoveScore, SolverResult, Word } from "../types/wordle";
-import { rankMoves } from "./ranking";
+import type {
+  MoveEvaluation,
+  MoveScore,
+  SolverHistogramBucket,
+  SolverHistogramResult,
+  SolverResult,
+  SolverStrategySnapshot,
+  Word,
+} from "../types/wordle";
+import { scoreMove } from "./analysis";
+import { buildRankingPool, compareMoveScores, rankMoves } from "./ranking";
 import { patternToString, scoreGuess } from "./wordle";
 
 const DEFAULT_BRANCH_LIMIT = 10;
+const PROGRESS_STEP = 0.025;
 
 function stateKey(candidates: readonly Word[], depth: number): string {
   return `${depth}:${[...candidates].sort((a, b) => a.localeCompare(b, "pl")).join(",")}`;
@@ -121,4 +131,213 @@ export function evaluateMove(
     chosenMove,
     bestMove,
   };
+}
+
+export class SolverSimulationCancelledError extends Error {
+  constructor() {
+    super("Solver simulation cancelled");
+    this.name = "SolverSimulationCancelledError";
+  }
+}
+
+export interface SolverMovePickerInput {
+  candidates: readonly Word[];
+  allowedGuesses: readonly Word[];
+  usedWords: ReadonlySet<Word>;
+  strategy: SolverStrategySnapshot;
+}
+
+export type SolverMovePicker = (input: SolverMovePickerInput) => Word | undefined;
+
+export interface SolverSimulationOptions {
+  onProgress?: (result: SolverHistogramResult) => void | Promise<void>;
+  shouldCancel?: () => boolean;
+  pickMove?: SolverMovePicker;
+}
+
+interface SolverTreeState {
+  candidates: readonly Word[];
+  guess: Word;
+  attempt: number;
+  usedWords: readonly Word[];
+}
+
+function createHistogramBucket(attempts: number | "unsolved", label: string, count: number, total: number): SolverHistogramBucket {
+  return {
+    attempts,
+    label,
+    count,
+    percentage: total > 0 ? (count / total) * 100 : 0,
+  };
+}
+
+function createSolverHistogramResult(
+  startWord: Word,
+  maxAttempts: number,
+  totalAnswers: number,
+  processedAnswers: number,
+  solvedTurnSum: number,
+  solvedCounts: readonly number[],
+  unsolvedAnswers: number,
+  strategy: SolverStrategySnapshot,
+): SolverHistogramResult {
+  const solvedAnswers = processedAnswers - unsolvedAnswers;
+  const histogram = Array.from({ length: maxAttempts }, (_, index) => {
+    const attempt = index + 1;
+    return createHistogramBucket(attempt, String(attempt), solvedCounts[attempt] ?? 0, totalAnswers);
+  });
+
+  histogram.push(createHistogramBucket("unsolved", `>${maxAttempts}`, unsolvedAnswers, totalAnswers));
+
+  return {
+    startWord,
+    maxAttempts,
+    totalAnswers,
+    processedAnswers,
+    solvedAnswers,
+    unsolvedAnswers,
+    averageAttempts: solvedAnswers > 0 ? solvedTurnSum / solvedAnswers : 0,
+    strategy,
+    histogram,
+  };
+}
+
+function addUsedWord(usedWords: readonly Word[], word: Word): Word[] {
+  return usedWords.includes(word) ? [...usedWords] : [...usedWords, word];
+}
+
+export function pickSolverMove({
+  candidates,
+  allowedGuesses,
+  usedWords,
+  strategy,
+}: SolverMovePickerInput): Word | undefined {
+  if (candidates.length === 0) return undefined;
+  if (candidates.length === 1) return candidates[0];
+
+  const pool = buildRankingPool(allowedGuesses, candidates, strategy.candidateOnly, strategy.exact)
+    .filter((word) => !usedWords.has(word));
+  if (!pool.length) return candidates.find((word) => !usedWords.has(word));
+
+  return pool
+    .map((word) => scoreMove(word, candidates))
+    .sort((a, b) => compareMoveScores(a, b, strategy.sortKey))[0]?.word;
+}
+
+export async function simulateSolverHistogram(
+  answers: readonly Word[],
+  allowedGuesses: readonly Word[],
+  input: {
+    startWord: Word;
+    maxAttempts: number;
+    strategy: SolverStrategySnapshot;
+  },
+  options: SolverSimulationOptions = {},
+): Promise<SolverHistogramResult> {
+  const maxAttempts = Math.max(1, Math.floor(input.maxAttempts));
+  const totalAnswers = answers.length;
+  const solvedCounts = Array<number>(maxAttempts + 1).fill(0);
+  const states: SolverTreeState[] = [{
+    candidates: [...answers],
+    guess: input.startWord,
+    attempt: 1,
+    usedWords: [],
+  }];
+  let processedAnswers = 0;
+  let solvedTurnSum = 0;
+  let unsolvedAnswers = 0;
+  let nextProgress = 0;
+
+  const buildResult = () => createSolverHistogramResult(
+    input.startWord,
+    maxAttempts,
+    totalAnswers,
+    processedAnswers,
+    solvedTurnSum,
+    solvedCounts,
+    unsolvedAnswers,
+    input.strategy,
+  );
+
+  const reportProgress = async (force = false) => {
+    if (!options.onProgress || totalAnswers === 0) return;
+    const progress = processedAnswers / totalAnswers;
+    if (!force && progress < nextProgress && processedAnswers < totalAnswers) return;
+    nextProgress = Math.min(1, progress + PROGRESS_STEP);
+    await options.onProgress(buildResult());
+  };
+
+  const assertNotCancelled = () => {
+    if (options.shouldCancel?.()) throw new SolverSimulationCancelledError();
+  };
+
+  const recordSolved = async (attempt: number, count: number) => {
+    solvedCounts[attempt] += count;
+    solvedTurnSum += attempt * count;
+    processedAnswers += count;
+    await reportProgress();
+  };
+
+  const recordUnsolved = async (count: number) => {
+    unsolvedAnswers += count;
+    processedAnswers += count;
+    await reportProgress();
+  };
+
+  await reportProgress(true);
+
+  let stateIndex = 0;
+  while (stateIndex < states.length) {
+    assertNotCancelled();
+    const state = states[stateIndex];
+    stateIndex += 1;
+    if (!state.candidates.length) continue;
+
+    if (state.attempt > maxAttempts) {
+      await recordUnsolved(state.candidates.length);
+      continue;
+    }
+
+    const buckets = bucketCandidates(state.guess, state.candidates);
+    const nextUsedWords = addUsedWord(state.usedWords, state.guess);
+    const nextUsedSet = new Set(nextUsedWords);
+
+    for (const [pattern, bucket] of buckets) {
+      assertNotCancelled();
+
+      if (pattern === "GGGGG") {
+        await recordSolved(state.attempt, bucket.length);
+        continue;
+      }
+
+      if (state.attempt >= maxAttempts) {
+        await recordUnsolved(bucket.length);
+        continue;
+      }
+
+      const nextGuess = bucket.length === 1
+        ? bucket[0]
+        : (options.pickMove ?? pickSolverMove)({
+            candidates: bucket,
+            allowedGuesses,
+            usedWords: nextUsedSet,
+            strategy: input.strategy,
+          });
+
+      if (!nextGuess) {
+        await recordUnsolved(bucket.length);
+        continue;
+      }
+
+      states.push({
+        candidates: bucket,
+        guess: nextGuess,
+        attempt: state.attempt + 1,
+        usedWords: nextUsedWords,
+      });
+    }
+  }
+
+  await reportProgress(true);
+  return buildResult();
 }

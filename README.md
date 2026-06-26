@@ -52,17 +52,44 @@ Klikniecie wczesniejszego etapu przycina pozniejsze ruchy. Dzieki temu mozna szy
 
 Przycisk **Losowe haslo** wybiera haslo ze slownika odpowiedzi i resetuje gre do treningu.
 
+## Solver startowy
+
+Panel **Solver startowy** sprawdza, w ilu probach dana strategia rozwiazuje wszystkie hasla ze slownika odpowiedzi.
+
+1. Wpisz slowo startowe.
+2. Ustaw limit prob `n`.
+3. Kliknij **Start**.
+
+Wpisane slowo liczy sie jako pierwsza proba. Kolejne ruchy sa wybierane z bucketow wedlug aktualnych ustawien rankingu: **Tylko kandydaci**, **Dokladnie** i aktywnej metryki sortowania.
+
+Histogram pokazuje liczbe hasel rozwiazanych w `1..n` probach. Slupek `> n` zawiera hasla nierozwiazane w zadanym limicie.
+
 ## Slownik
 
-Aplikacja uzywa lokalnego pliku:
+Aplikacja uzywa dwoch lokalnych plikow:
 
 ```text
 public/slowa.txt
+public/hasla.txt
+public/answer-metadata.json
+public/opening-moves.json
 ```
 
-Plik powinien miec jedno slowo na linie. Loader normalizuje slowa, usuwa duplikaty, odrzuca wpisy inne niz 5 polskich liter i sortuje wynik po polsku.
+`public/slowa.txt` to szeroka lista dopuszczalnych prob z piecioliterowych form SJP. `public/hasla.txt` to lista mozliwych odpowiedzi uzywana do kandydatow i przycisku **Losowe haslo**: top 6000 slow z przeciecia SJP i KWJP, sortowanych przy generowaniu wedlug czestosci `ARF`.
 
-Po pierwszym wczytaniu slownik jest cache'owany w przegladarce. Jesli zmienisz `public/slowa.txt`, kliknij **Wczytaj** w panelu slownika. Aplikacja automatycznie doda cache-buster do pobrania, wiec nie trzeba dopisywac `?v=1` recznie.
+`public/answer-metadata.json` oznacza hasla, ktore w PoliMorf wystepuja tylko jako odmiana innego lematu. Domyslnie wlaczony checkbox **Ukryj unlikely** usuwa takie hasla z kandydatow, rankingu, losowania i solvera. Po odznaczeniu checkboxa odmiany sa nadal dostepne, ale dostaja badge `odmiana` i nie sa wizualnie pogrubione.
+
+Pliki powinny miec jedno slowo na linie. Loader normalizuje slowa, usuwa duplikaty, odrzuca wpisy inne niz 5 polskich liter, sortuje wynik po polsku i odrzuca hasla, ktorych nie ma w liscie prob.
+
+Slownik jest generowany odtwarzalnym skryptem:
+
+```bash
+npm run dictionary:build
+```
+
+Generator pobiera pinowany slownik SJP do gier (`sjp-20260601.zip`), liste czestosci KWJP (`kwjp100-slowa-orth_lc-all.csv.gz`) oraz PoliMorf (`PoliMorf-0.6.7.tab.gz`). Wszystkie piecioliterowe formy SJP trafiaja do prob, a hasla sa ograniczane do top 6000 slow z przeciecia SJP i KWJP wedlug `ARF`. `public/opening-moves.json` zawiera preliczony dokladny ranking startowy dla pelnej puli i profilu `likelyOnly`.
+
+Po pierwszym wczytaniu slownik jest cache'owany w przegladarce. Jesli zmienisz `public/slowa.txt`, `public/hasla.txt` albo `public/answer-metadata.json`, kliknij **Wczytaj** w panelu slownika. Aplikacja automatycznie doda cache-buster do pobrania, wiec nie trzeba dopisywac `?v=1` recznie.
 
 Slowo spoza slownika nie zostanie dodane do planszy. Aplikacja pokaze komunikat:
 
@@ -137,7 +164,11 @@ To pomaga zrozumiec, czy slowo jest bezpieczne: dobry ruch nie tylko ma wysoka e
 
 ## Offline i PWA
 
-Aplikacja rejestruje service workera w buildzie produkcyjnym. Cache'owane sa podstawowe zasoby aplikacji, manifest i lokalny `slowa.txt`.
+Aplikacja rejestruje service workera w buildzie produkcyjnym. Cache'owane sa podstawowe zasoby aplikacji, manifest oraz lokalne `slowa.txt`, `hasla.txt`, `answer-metadata.json` i `opening-moves.json`.
+
+## Zrodla danych
+
+Slownik prob pochodzi ze slownika do gier SJP.PL, lista hasel jest filtrowana rankingiem czestosci KWJP, a oznaczenia odmian pochodza z PoliMorf. Szczegoly atrybucji sa w `NOTICE.md`.
 
 ## Stack
 
