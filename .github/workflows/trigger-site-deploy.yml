@@ -1,0 +1,50 @@
+name: Trigger site deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trigger-site-deploy
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger GitHub Pages workflow
+        env:
+          GH_TOKEN: ${{ secrets.SITE_WORKFLOW_DISPATCH_TOKEN }}
+          SITE_REPOSITORY: kkotysz/plokoon12.github.io
+          SITE_WORKFLOW: pages.yml
+          SITE_REF: main
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "Missing SITE_WORKFLOW_DISPATCH_TOKEN secret."
+            exit 1
+          fi
+
+          response_body="$(mktemp)"
+          http_status="$(
+            curl -sS -L \
+              -o "$response_body" \
+              -w "%{http_code}" \
+              -X POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "https://api.github.com/repos/${SITE_REPOSITORY}/actions/workflows/${SITE_WORKFLOW}/dispatches" \
+              -d "{\"ref\":\"${SITE_REF}\"}"
+          )"
+
+          if [ "$http_status" != "204" ] && [ "$http_status" != "200" ]; then
+            echo "Workflow dispatch failed with HTTP $http_status."
+            cat "$response_body"
+            exit 1
+          fi
+
+          echo "Triggered ${SITE_WORKFLOW} in ${SITE_REPOSITORY}."

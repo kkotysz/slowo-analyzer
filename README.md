@@ -32,8 +32,14 @@ npm run preview:pages
 Ten build zaklada, ze pliki zostana opublikowane pod folderem
 `slowo-analyzer/` w repo strony. Najbezpieczniejszy deploy bez commitowania
 pliku builda do repo strony to workflow GitHub Pages w repo
-`plokoon12/plokoon12.github.io`, ktory checkoutuje to repo tylko do odczytu,
+`kkotysz/plokoon12.github.io`, ktory checkoutuje to repo tylko do odczytu,
 kopiuje `dist/` do artefaktu Pages i publikuje artefakt.
+
+Push na `main` w tym repo moze automatycznie odpalac workflow strony bez prawa
+pushowania do repo strony. W tym repo dodaj secret
+`SITE_WORKFLOW_DISPATCH_TOKEN`: fine-grained personal access token ograniczony
+do repo `kkotysz/plokoon12.github.io` z uprawnieniem **Actions: Read and write**.
+Token nie potrzebuje uprawnienia `Contents: Write`.
 
 ## Glowny przeplyw
 
