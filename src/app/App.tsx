@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "./AppShell";
+import { MOBILE_WORKSPACE_QUERY, useMediaQuery } from "./useMediaQuery";
 import { analyzeGame, candidatesAfterGuesses, computeLuckScore, scoreMove } from "../domain/analysis";
 import {
   annotateMoveWithAnswerMetadata,
@@ -23,7 +24,10 @@ import { CandidatePanel } from "../components/CandidatePanel";
 import { DictionaryStatus } from "../components/DictionaryStatus";
 import { GameSummary } from "../components/GameSummary";
 import { MoveDetailsPanel } from "../components/MoveDetailsPanel";
+import { MobileKeyboard } from "../components/MobileKeyboard";
+import { MobileWorkspaceTabs } from "../components/MobileWorkspaceTabs";
 import { SolverPanel } from "../components/SolverPanel";
+import { WorkspacePanelSlot } from "../components/WorkspacePanelSlot";
 import { WordGrid } from "../components/WordGrid";
 import { readStoredGame, readStoredTheme, writeStoredGame, writeStoredTheme } from "../storage/gamePersistence";
 import {
@@ -40,6 +44,7 @@ import type {
   Guess,
   MoveDetailsStats,
   MoveScore,
+  MobileWorkspaceView,
   RankingSortKey,
   SolverHistogramResult,
   SolverStrategySnapshot,
@@ -87,7 +92,9 @@ function bucketSummariesWithCurrent(move: MoveScore, currentPattern: string): Bu
 
 export function App() {
   const [initialGame] = useState(() => readStoredGame());
+  const compactWorkspace = useMediaQuery(MOBILE_WORKSPACE_QUERY);
   const [theme, setTheme] = useState<"light" | "dark">(() => readStoredTheme() ?? "light");
+  const [mobileView, setMobileView] = useState<MobileWorkspaceView>("game");
   const [wordLists, setWordLists] = useState<WordLists>({
     allowedGuesses: [],
     possibleAnswers: [],
@@ -426,15 +433,17 @@ export function App() {
     if (result.status === "ok") setSelectedMove(undefined);
   }
 
-  function commitWord(rawWord: Word): void {
-    applyGameCommand(commitWordToGame({
+  function commitWord(rawWord: Word): boolean {
+    const result = commitWordToGame({
       mode,
       answer,
       guesses,
       word: rawWord,
       manualPattern: draft.pattern,
       dictionary: wordLists,
-    }));
+    });
+    applyGameCommand(result);
+    return result.status === "ok";
   }
 
   function submitDraft(): void {
@@ -452,7 +461,7 @@ export function App() {
   }
 
   function pickWord(word: Word): void {
-    commitWord(word);
+    if (commitWord(word) && compactWorkspace) setMobileView("game");
   }
 
   function loadExample(): void {
@@ -461,6 +470,7 @@ export function App() {
     setGuesses(EXAMPLE_GAME);
     setDraft(createEmptyGuess());
     setMessage("Wczytano przykład gry.");
+    setMobileView("game");
   }
 
   function loadRandomAnswer(): void {
@@ -475,6 +485,7 @@ export function App() {
     setDraft(createEmptyGuess());
     setSelectedMove(undefined);
     setMessage("Wylosowano hasło treningowe.");
+    setMobileView("game");
   }
 
   function clearGame(): void {
@@ -484,6 +495,7 @@ export function App() {
     setMoves([]);
     setSelectedMove(undefined);
     setMessage("");
+    setMobileView("game");
   }
 
   function selectHistoryStep(index: number): void {
@@ -590,138 +602,232 @@ export function App() {
 
   return (
     <AppShell
+      compact={compactWorkspace}
       theme={theme}
       onThemeToggle={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
       onLoadExample={loadExample}
       onClear={clearGame}
     >
-      <div className="workspace">
+      {compactWorkspace ? (
+        <MobileWorkspaceTabs
+          activeView={mobileView}
+          candidateCount={candidates.length}
+          guessCount={completeGuesses.length}
+          solverStatus={solverStatus}
+          solverProgress={solverProgress}
+          onViewChange={setMobileView}
+        />
+      ) : null}
+      <div
+        className="workspace"
+        id={compactWorkspace ? "mobile-workspace-panel" : undefined}
+        role={compactWorkspace ? "tabpanel" : undefined}
+        aria-labelledby={compactWorkspace ? `mobile-tab-${mobileView}` : undefined}
+      >
         <div className="main-column">
-          <section className="panel board-panel">
-            <div className="panel-header">
-              <div>
-                <h2>Gra</h2>
-                <p className={`game-message ${gameMessageTone}`} aria-live="polite">{gameMessage}</p>
+          <WorkspacePanelSlot
+            activeView={mobileView}
+            compact={compactWorkspace}
+            order={2}
+            view="game"
+          >
+            <section className="panel board-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Gra</h2>
+                  <p className={`game-message ${gameMessageTone}`} aria-live="polite">{gameMessage}</p>
+                </div>
+                <button type="button" className="primary-button board-submit-button" onClick={submitDraft} disabled={!guessIsComplete(draft)}>
+                  Dodaj ruch
+                </button>
               </div>
-              <button type="button" className="primary-button" onClick={submitDraft} disabled={!guessIsComplete(draft)}>
-                Dodaj ruch
-              </button>
-            </div>
-            <div className="mode-controls" aria-label="Tryb analizy">
-              <button
-                type="button"
-                className={mode === "simulation" ? "mode-button active" : "mode-button"}
-                onClick={() => setMode("simulation")}
-              >
-                Symulacja z hasłem
-              </button>
-              <button
-                type="button"
-                className={mode === "manual" ? "mode-button active" : "mode-button"}
-                onClick={() => setMode("manual")}
-              >
-                Analiza ręczna
-              </button>
-              <button
-                type="button"
-                className="mode-button"
-                onClick={loadRandomAnswer}
-                disabled={!activePossibleAnswers.length}
-              >
-                Losowe hasło
-              </button>
-              <label className="answer-control">
-                <span>Hasło końcowe</span>
-                <input
-                  value={answer.toLocaleUpperCase("pl-PL")}
-                  maxLength={5}
-                  disabled={mode !== "simulation"}
-                  onChange={(event) => {
-                    const nextAnswer = normalizeWord(event.target.value);
-                    setAnswer(nextAnswer);
-                    setGuesses((current) => current.map((guess) => ({
-                      ...guess,
-                      pattern: isFiveLetterWord(guess.word) && isFiveLetterWord(nextAnswer)
-                        ? scoreGuess(guess.word, nextAnswer)
-                        : guess.pattern,
-                    })));
-                  }}
-                  placeholder="np. TREFL"
+              <div className="mobile-game-actions" aria-label="Akcje gry">
+                <button type="button" className="secondary-button" onClick={loadExample}>Przykład</button>
+                <button type="button" className="secondary-button danger-text" onClick={clearGame}>Wyczyść</button>
+              </div>
+              <div className="mode-controls" aria-label="Tryb analizy">
+                <button
+                  type="button"
+                  className={mode === "simulation" ? "mode-button active" : "mode-button"}
+                  onClick={() => setMode("simulation")}
+                >
+                  Symulacja z hasłem
+                </button>
+                <button
+                  type="button"
+                  className={mode === "manual" ? "mode-button active" : "mode-button"}
+                  onClick={() => setMode("manual")}
+                >
+                  Analiza ręczna
+                </button>
+                <button
+                  type="button"
+                  className="mode-button"
+                  onClick={loadRandomAnswer}
+                  disabled={!activePossibleAnswers.length}
+                >
+                  Losowe hasło
+                </button>
+                <label className="answer-control">
+                  <span>Hasło końcowe</span>
+                  <input
+                    value={answer.toLocaleUpperCase("pl-PL")}
+                    maxLength={5}
+                    disabled={mode !== "simulation"}
+                    onChange={(event) => {
+                      const nextAnswer = normalizeWord(event.target.value);
+                      setAnswer(nextAnswer);
+                      setGuesses((current) => current.map((guess) => ({
+                        ...guess,
+                        pattern: isFiveLetterWord(guess.word) && isFiveLetterWord(nextAnswer)
+                          ? scoreGuess(guess.word, nextAnswer)
+                          : guess.pattern,
+                      })));
+                    }}
+                    placeholder="np. TREFL"
+                  />
+                </label>
+              </div>
+              <WordGrid
+                guesses={guesses}
+                draft={draft}
+                onDraftChange={(nextDraft) => setDraft({ ...nextDraft, word: normalizeWord(nextDraft.word) })}
+                onSubmitDraft={submitDraft}
+                onUpdateGuess={updateGuess}
+                onRemoveGuess={removeGuess}
+                lockPatterns={mode === "simulation"}
+                virtualKeyboardActive={compactWorkspace}
+              />
+              {compactWorkspace ? (
+                <MobileKeyboard
+                  guesses={guesses}
+                  draft={draft}
+                  onDraftChange={(nextDraft) => setDraft({ ...nextDraft, word: normalizeWord(nextDraft.word) })}
+                  onSubmitDraft={submitDraft}
                 />
-              </label>
-            </div>
-            <WordGrid
-              guesses={guesses}
-              draft={draft}
-              onDraftChange={(nextDraft) => setDraft({ ...nextDraft, word: normalizeWord(nextDraft.word) })}
-              onSubmitDraft={submitDraft}
-              onUpdateGuess={updateGuess}
-              onRemoveGuess={removeGuess}
-              lockPatterns={mode === "simulation"}
+              ) : null}
+            </section>
+          </WorkspacePanelSlot>
+
+          <WorkspacePanelSlot
+            activeView={mobileView}
+            compact={compactWorkspace}
+            order={1}
+            view="solver"
+          >
+            <SolverPanel
+              startWord={solverStartWord}
+              maxAttempts={solverMaxAttempts}
+              answerCount={activePossibleAnswers.length}
+              status={solverStatus}
+              progress={solverProgress}
+              result={solverResult}
+              message={solverMessage}
+              strategy={solverStrategy}
+              canStart={solverCanStart}
+              onStartWordChange={updateSolverStartWord}
+              onMaxAttemptsChange={updateSolverMaxAttempts}
+              onStart={startSolver}
+              onStop={stopSolver}
             />
-          </section>
+          </WorkspacePanelSlot>
 
-          <SolverPanel
-            startWord={solverStartWord}
-            maxAttempts={solverMaxAttempts}
-            answerCount={activePossibleAnswers.length}
-            status={solverStatus}
-            progress={solverProgress}
-            result={solverResult}
-            message={solverMessage}
-            strategy={solverStrategy}
-            canStart={solverCanStart}
-            onStartWordChange={updateSolverStartWord}
-            onMaxAttemptsChange={updateSolverMaxAttempts}
-            onStart={startSolver}
-            onStop={stopSolver}
-          />
-
-          <CandidatePanel
-            candidates={candidates}
-            answerMetadata={answerMetadata}
-            onPickWord={pickWord}
-          />
+          <WorkspacePanelSlot
+            activeView={mobileView}
+            compact={compactWorkspace}
+            order={3}
+            view="analysis"
+          >
+            <CandidatePanel
+              candidates={candidates}
+              answerMetadata={answerMetadata}
+              onPickWord={pickWord}
+            />
+          </WorkspacePanelSlot>
         </div>
 
         <aside className="side-column">
-          <DictionaryStatus
-            status={dictionaryStatus}
-            onReload={reloadDictionary}
-          />
+          <WorkspacePanelSlot
+            activeView={mobileView}
+            compact={compactWorkspace}
+            order={1}
+            view="game"
+          >
+            <DictionaryStatus
+              status={dictionaryStatus}
+              onReload={reloadDictionary}
+            />
+          </WorkspacePanelSlot>
 
-          <GameSummary
-            guesses={completeGuesses}
-            steps={analysisSteps}
-            candidateCount={candidates.length}
-            currentMove={currentMove}
-            onSelectStep={selectHistoryStep}
-          />
+          <WorkspacePanelSlot
+            activeView={mobileView}
+            compact={compactWorkspace}
+            order={3}
+            view="game"
+          >
+            <GameSummary
+              guesses={completeGuesses}
+              steps={analysisSteps}
+              candidateCount={candidates.length}
+              currentMove={currentMove}
+              onSelectStep={selectHistoryStep}
+            />
+          </WorkspacePanelSlot>
 
-          <BestMovesPanel
-            moves={visibleMoves}
-            status={workerStatus}
-            progress={workerProgress}
-            candidateOnly={candidateOnly}
-            exactRanking={exactRanking}
-            hideUnlikelyAnswers={hideUnlikelyAnswers}
-            sortKey={rankingSortKey}
-            inspectedWord={selectedMove?.word}
-            onCandidateOnlyChange={setCandidateOnly}
-            onExactRankingChange={setExactRanking}
-            onHideUnlikelyAnswersChange={setHideUnlikelyAnswers}
-            onSortKeyChange={setRankingSortKey}
-            onPickWord={pickWord}
-            onInspectMove={setSelectedMove}
-          />
+          <WorkspacePanelSlot
+            activeView={mobileView}
+            compact={compactWorkspace}
+            order={2}
+            view="analysis"
+          >
+            <BestMovesPanel
+              moves={visibleMoves}
+              status={workerStatus}
+              progress={workerProgress}
+              candidateOnly={candidateOnly}
+              compact={compactWorkspace}
+              exactRanking={exactRanking}
+              hideUnlikelyAnswers={hideUnlikelyAnswers}
+              sortKey={rankingSortKey}
+              inspectedWord={selectedMove?.word}
+              onCandidateOnlyChange={setCandidateOnly}
+              onExactRankingChange={setExactRanking}
+              onHideUnlikelyAnswersChange={setHideUnlikelyAnswers}
+              onSortKeyChange={setRankingSortKey}
+              onPickWord={pickWord}
+              onInspectMove={setSelectedMove}
+            />
+          </WorkspacePanelSlot>
 
-          <MoveDetailsPanel
-            move={selectedMove}
-            moveBuckets={selectedMoveDetails.buckets}
-            moveStats={selectedMoveDetails.stats}
-            latestStep={analysisSteps.at(-1)}
-          />
+          <WorkspacePanelSlot
+            activeView={mobileView}
+            compact={compactWorkspace}
+            order={4}
+            view="analysis"
+          >
+            <MoveDetailsPanel
+              compact={compactWorkspace}
+              move={selectedMove}
+              moveBuckets={selectedMoveDetails.buckets}
+              moveStats={selectedMoveDetails.stats}
+              latestStep={analysisSteps.at(-1)}
+            />
+          </WorkspacePanelSlot>
         </aside>
+        {compactWorkspace ? (
+          <WorkspacePanelSlot
+            activeView={mobileView}
+            compact
+            order={1}
+            view="analysis"
+          >
+            <section className="mobile-analysis-context" aria-label="Stan analizy">
+              <span>Stan gry</span>
+              <strong>{completeGuesses.length}/6 ruchów</strong>
+              <strong>{candidates.length.toLocaleString("pl-PL")} kandydatów</strong>
+            </section>
+          </WorkspacePanelSlot>
+        ) : null}
       </div>
     </AppShell>
   );

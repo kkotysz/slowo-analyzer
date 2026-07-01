@@ -19,6 +19,18 @@ export const HELP_SECTIONS: HelpSection[] = [
     ],
   },
   {
+    title: "Widok mobilny",
+    tag: "Telefon",
+    tone: "green",
+    takeaway: "Zakładki rozdzielają grę, analizę i solver, a wybór słowa zawsze wraca do planszy.",
+    body: [
+      "Na telefonie i tablecie do 980 px interfejs ma trzy zakładki: Gra zawiera planszę i historię, Analiza ranking i kandydatów, a Solver osobną symulację słowa startowego.",
+      "Klawiatura pod planszą wpisuje litery do aktywnego wiersza. Enter zatwierdza słowo, klawisz cofania usuwa literę, a PL otwiera rząd Ą Ć Ę Ł Ń Ó Ś Ź Ż. Wybranie polskiej litery automatycznie zamyka ten rząd.",
+      "Kolory klawiszy podsumowują zatwierdzone próby z priorytetem zielony, żółty, szary. Fizyczna klawiatura nadal działa, ale klawiatura systemowa telefonu nie zasłania planszy.",
+      "Przycisk i przy rekomendacji tylko otwiera szczegóły. Kliknięcie całego wiersza lub kandydata od razu dodaje słowo i przełącza widok na Grę.",
+    ],
+  },
+  {
     title: "Słownik i cache",
     tag: "Dane",
     tone: "slate",

@@ -58,6 +58,24 @@ Tryb **Analiza reczna** pozwala samodzielnie ustawic kolory kafelkow. Kafelki pr
 szary -> zolty -> zielony
 ```
 
+## Widok mobilny
+
+Na ekranach do `980px` aplikacja dzieli przestrzen na trzy zakladki:
+
+- **Gra**: status slownika, tryb, haslo, plansza, klawiatura i historia,
+- **Analiza**: ranking, kandydaci i zwijane szczegoly ruchu,
+- **Solver**: ustawienia, postep i histogram solvera startowego.
+
+Mobilna klawiatura wpisuje litery bez otwierania klawiatury systemowej. **Enter**
+zatwierdza slowo, klawisz cofania usuwa ostatnia litere, a **PL** otwiera rzad
+`Ą Ć Ę Ł Ń Ó Ś Ź Ż`. Po wybraniu znaku rzad
+zamyka sie automatycznie. Fizyczna klawiatura nadal obsluguje aktywny wiersz.
+
+Kolory klawiszy wynikaja z zatwierdzonych prob, z priorytetem zielony, zolty,
+szary. W Analizie przycisk **i** tylko rozwija szczegoly rekomendacji.
+Klikniecie calego wiersza rankingu albo kandydata od razu dodaje slowo i wraca
+do zakladki Gra. Solver kontynuuje obliczenia po zmianie zakladki.
+
 ## Historia i strategie
 
 Panel **Stan gry** pokazuje kolejne etapy rozgrywki:

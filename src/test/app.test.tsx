@@ -25,6 +25,22 @@ function createLocalStorageMock(): Storage {
   };
 }
 
+function stubMatchMedia(matches: boolean): void {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn((query: string): MediaQueryList => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
 vi.mock("../domain/dictionary", () => ({
   loadWordLists: vi.fn(async () => ({
     lists: {
@@ -111,6 +127,48 @@ describe("App interactions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("localStorage", createLocalStorageMock());
+    stubMatchMedia(false);
+  });
+
+  it("groups the mobile workspace in tabs and returns to the game after a valid pick", async () => {
+    stubMatchMedia(true);
+    render(<App />);
+
+    await screen.findByText("Słownik gotowy");
+    expect(screen.getByRole("tab", { name: "Gra" }).getAttribute("aria-selected")).toBe("true");
+    expect((screen.getByLabelText("Słowo w wierszu 1") as HTMLInputElement).inputMode).toBe("none");
+
+    fireEvent.change(screen.getByLabelText("Hasło końcowe"), { target: { value: "trefl" } });
+    fireEvent.click(screen.getByRole("tab", { name: "Analiza 2" }));
+    expect(screen.getByRole("tab", { name: "Analiza 2" }).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "STARE" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Gra 1/6" }).getAttribute("aria-selected")).toBe("true");
+    });
+    expect((screen.getByLabelText("Słowo w wierszu 1") as HTMLInputElement).value).toBe("STARE");
+  });
+
+  it("keeps the mobile solver running after switching tabs", async () => {
+    stubMatchMedia(true);
+    render(<App />);
+
+    await screen.findByText("Słownik gotowy");
+    fireEvent.click(screen.getByRole("tab", { name: "Solver" }));
+    fireEvent.change(screen.getByLabelText("Słowo startowe"), { target: { value: "stare" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(postSolveRequest)).toHaveBeenCalled();
+    });
+    const solverWorker = vi.mocked(postSolveRequest).mock.calls.at(-1)?.[0];
+    expect(solverWorker).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Analiza 2" }));
+
+    expect(solverWorker?.terminate).not.toHaveBeenCalled();
+    expect(vi.mocked(postCancelRequest).mock.calls.some(([worker]) => worker === solverWorker)).toBe(false);
   });
 
   it("commits a clicked candidate immediately and focuses the next input", async () => {

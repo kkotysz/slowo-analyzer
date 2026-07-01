@@ -2,6 +2,7 @@ import type { AnalysisStep, BucketSummary, MoveDetailsStats, MoveScore } from ".
 import { formatWord } from "../domain/wordle";
 
 interface MoveDetailsPanelProps {
+  compact?: boolean;
   move?: MoveScore;
   moveStats?: MoveDetailsStats;
   moveBuckets?: BucketSummary[];
@@ -16,11 +17,17 @@ function formatPercent(value: number): string {
   return `${value.toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%`;
 }
 
-export function MoveDetailsPanel({ move, moveStats, moveBuckets, latestStep }: MoveDetailsPanelProps) {
+export function MoveDetailsPanel({
+  compact = false,
+  move,
+  moveStats,
+  moveBuckets,
+  latestStep,
+}: MoveDetailsPanelProps) {
   const bucketSummaries = moveBuckets ?? move?.bucketSummaries ?? [];
 
-  return (
-    <section className="panel move-details-panel">
+  const content = (
+    <>
       <div className="panel-header">
         <div>
           <h2>Szczegóły ruchu</h2>
@@ -78,6 +85,20 @@ export function MoveDetailsPanel({ move, moveStats, moveBuckets, latestStep }: M
       ) : (
         <p className="empty-copy">Najedź na rekomendację, żeby podejrzeć rozkład bucketów.</p>
       )}
-    </section>
+    </>
   );
+
+  if (compact) {
+    return (
+      <details className="panel move-details-panel mobile-move-details" open={Boolean(move)}>
+        <summary>
+          <span>Szczegóły ruchu</span>
+          <strong>{move ? formatWord(move.word) : latestStep ? formatWord(latestStep.guess.word) : "Wybierz ruch"}</strong>
+        </summary>
+        <div className="mobile-move-details-content">{content}</div>
+      </details>
+    );
+  }
+
+  return <section className="panel move-details-panel">{content}</section>;
 }

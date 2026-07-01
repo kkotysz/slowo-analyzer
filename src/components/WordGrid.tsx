@@ -19,6 +19,7 @@ interface WordGridProps {
   onUpdateGuess: (index: number, guess: Guess) => void;
   onRemoveGuess: (index: number) => void;
   lockPatterns?: boolean;
+  virtualKeyboardActive?: boolean;
 }
 
 function lettersFor(word: Word): string[] {
@@ -38,7 +39,9 @@ export function WordGrid({
   onUpdateGuess,
   onRemoveGuess,
   lockPatterns = false,
+  virtualKeyboardActive = false,
 }: WordGridProps) {
+  const gridRef = useRef<HTMLElement | null>(null);
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const rows = Array.from({ length: maxRows }, (_, index) => {
     if (index < guesses.length) return { kind: "guess" as const, guess: guesses[index] };
@@ -48,11 +51,12 @@ export function WordGrid({
 
   useEffect(() => {
     if (guesses.length >= maxRows) return;
-    inputRefs.current[guesses.length]?.focus();
-  }, [guesses.length, maxRows]);
+    if (virtualKeyboardActive) gridRef.current?.focus();
+    else inputRefs.current[guesses.length]?.focus();
+  }, [guesses.length, maxRows, virtualKeyboardActive]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.target instanceof HTMLInputElement) return;
+    if (event.target instanceof HTMLInputElement && !virtualKeyboardActive) return;
     if (guesses.length >= maxRows) return;
 
     if (event.key === "Enter") {
@@ -74,13 +78,21 @@ export function WordGrid({
   }
 
   return (
-    <section className="word-grid" onKeyDown={handleKeyDown} tabIndex={0} aria-label="Grid gry">
+    <section
+      className={virtualKeyboardActive ? "word-grid virtual-keyboard-active" : "word-grid"}
+      onKeyDown={handleKeyDown}
+      ref={gridRef}
+      tabIndex={0}
+      aria-label="Grid gry"
+    >
       {rows.map((row, rowIndex) => {
         const letters = lettersFor(row.guess.word);
         const isDraft = row.kind === "draft";
         const isSubmitted = row.kind === "guess";
         const isEmpty = row.kind === "empty";
-        const rowLabel = isDraft ? "aktywny" : isSubmitted ? `${rowIndex + 1}` : "";
+        const rowLabel = isDraft
+          ? virtualKeyboardActive ? "teraz" : "aktywny"
+          : isSubmitted ? `${rowIndex + 1}` : "";
 
         return (
           <div className={`word-row ${isDraft ? "active" : ""} ${isEmpty ? "muted-row" : ""}`} key={rowIndex}>
@@ -112,6 +124,9 @@ export function WordGrid({
               value={formatWord(row.guess.word)}
               maxLength={5}
               disabled={isEmpty}
+              inputMode={virtualKeyboardActive ? "none" : "text"}
+              readOnly={virtualKeyboardActive}
+              tabIndex={virtualKeyboardActive ? -1 : undefined}
               onChange={(event) => {
                 const updated = { ...row.guess, word: normalizeWord(event.target.value) };
                 if (isDraft) onDraftChange(updated);
@@ -120,6 +135,7 @@ export function WordGrid({
               onKeyDown={(event) => {
                 if (isDraft && event.key === "Enter") {
                   event.preventDefault();
+                  event.stopPropagation();
                   onSubmitDraft();
                 }
               }}

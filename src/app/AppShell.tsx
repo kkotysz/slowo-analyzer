@@ -4,6 +4,7 @@ import { HelpDialog } from "../components/HelpDialog";
 import { ThemeToggle } from "../components/ThemeToggle";
 
 interface AppShellProps {
+  compact?: boolean;
   theme: "light" | "dark";
   onThemeToggle: () => void;
   onLoadExample: () => void;
@@ -11,7 +12,14 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-export function AppShell({ theme, onThemeToggle, onLoadExample, onClear, children }: AppShellProps) {
+export function AppShell({
+  compact = false,
+  theme,
+  onThemeToggle,
+  onLoadExample,
+  onClear,
+  children,
+}: AppShellProps) {
   const [helpOpen, setHelpOpen] = useState(false);
 
   return (
@@ -22,9 +30,22 @@ export function AppShell({ theme, onThemeToggle, onLoadExample, onClear, childre
           <p>Polski WordleBot-lite do analizy kandydatów, bucketów i następnych ruchów.</p>
         </div>
         <div className="header-actions">
-          <button type="button" className="secondary-button" onClick={() => setHelpOpen(true)}>Help</button>
-          <button type="button" className="secondary-button" onClick={onLoadExample}>Przykład</button>
-          <button type="button" className="secondary-button danger-text" onClick={onClear}>Wyczyść</button>
+          <button
+            type="button"
+            className="secondary-button header-help-button"
+            onClick={() => setHelpOpen(true)}
+            aria-label="Help"
+            title="Help"
+          >
+            <span className="desktop-control-label">Help</span>
+            <span className="mobile-control-label" aria-hidden="true">?</span>
+          </button>
+          {!compact ? (
+            <>
+              <button type="button" className="secondary-button header-example-button" onClick={onLoadExample}>Przykład</button>
+              <button type="button" className="secondary-button danger-text header-clear-button" onClick={onClear}>Wyczyść</button>
+            </>
+          ) : null}
           <ThemeToggle theme={theme} onToggle={onThemeToggle} />
         </div>
       </header>

@@ -12,6 +12,8 @@ export type Word = string;
 
 export type AppMode = "manual" | "simulation";
 
+export type MobileWorkspaceView = "game" | "analysis" | "solver";
+
 export type DictionaryMode = "shared" | "separate";
 
 export type AnswerLikelihood = "likely" | "unlikely";

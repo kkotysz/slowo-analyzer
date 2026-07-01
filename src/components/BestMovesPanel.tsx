@@ -7,6 +7,7 @@ interface BestMovesPanelProps {
   progress: number;
   candidateOnly: boolean;
   exactRanking: boolean;
+  compact?: boolean;
   hideUnlikelyAnswers: boolean;
   sortKey: RankingSortKey;
   inspectedWord?: Word;
@@ -76,6 +77,7 @@ export function BestMovesPanel({
   progress,
   candidateOnly,
   exactRanking,
+  compact = false,
   hideUnlikelyAnswers,
   sortKey,
   inspectedWord,
@@ -120,6 +122,21 @@ export function BestMovesPanel({
           </label>
         </div>
       </div>
+      {compact ? (
+        <div className="mobile-ranking-sort" role="group" aria-label="Sortowanie rankingu">
+          {SORTABLE_COLUMNS.map((column) => (
+            <button
+              type="button"
+              className={sortKey === column.key ? "active" : ""}
+              aria-pressed={sortKey === column.key}
+              key={column.key}
+              onClick={() => onSortKeyChange(column.key)}
+            >
+              {column.shortLabel}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="move-table" role="table" aria-label="Ranking ruchów">
         <div className="move-row move-head" role="row">
           <span>#</span>
@@ -136,38 +153,53 @@ export function BestMovesPanel({
         {moves.map((move, index) => {
           const unlikely = move.likelihood === "unlikely";
           return (
-            <button
-              className={move.word === inspectedWord ? "move-row inspected" : "move-row"}
-              type="button"
+            <div
+              className={move.word === inspectedWord ? "move-row-shell inspected" : "move-row-shell"}
               key={move.word}
-              aria-current={move.word === inspectedWord ? "true" : undefined}
-              title={unlikelyMoveTitle(move)}
-              onFocus={() => onInspectMove(move)}
-              onMouseEnter={() => onInspectMove(move)}
-              onPointerEnter={() => onInspectMove(move)}
-              onClick={() => {
-                onInspectMove(move);
-                onPickWord(move.word);
-              }}
             >
-              <span className="rank">{index + 1}</span>
-              <span className={unlikely ? "move-word unlikely" : "move-word"}>
-                {formatWord(move.word)}
-                <small>{unlikely ? "odmiana" : move.isCandidate ? "kandydat" : "info"}</small>
-              </span>
-              <span>{formatScore(move.entropy, 3)}</span>
-              <span>{move.worstBucket.toLocaleString("pl-PL")}</span>
-              <span>{formatScore(move.averageBucket, 1)}</span>
-              <span>{formatScore(move.hitProbability * 100, 1)}%</span>
-              <span className="turns-cell">
-                <span>{formatAttempts(move)}</span>
-                <small>
-                  {move.turnsMetric?.status === "simulated" && move.turnsMetric.solveRate !== null
-                    ? `${formatScore(move.turnsMetric.solveRate * 100, 0)}%`
-                    : "est."}
-                </small>
-              </span>
-            </button>
+              <button
+                className={move.word === inspectedWord ? "move-row inspected" : "move-row"}
+                type="button"
+                aria-current={move.word === inspectedWord ? "true" : undefined}
+                title={unlikelyMoveTitle(move)}
+                onFocus={() => onInspectMove(move)}
+                onMouseEnter={() => onInspectMove(move)}
+                onPointerEnter={() => onInspectMove(move)}
+                onClick={() => {
+                  onInspectMove(move);
+                  onPickWord(move.word);
+                }}
+              >
+                <span className="rank">{index + 1}</span>
+                <span className={unlikely ? "move-word unlikely" : "move-word"}>
+                  {formatWord(move.word)}
+                  <small>{unlikely ? "odmiana" : move.isCandidate ? "kandydat" : "info"}</small>
+                </span>
+                <span>{formatScore(move.entropy, 3)}</span>
+                <span>{move.worstBucket.toLocaleString("pl-PL")}</span>
+                <span>{formatScore(move.averageBucket, 1)}</span>
+                <span>{formatScore(move.hitProbability * 100, 1)}%</span>
+                <span className="turns-cell">
+                  <span>{formatAttempts(move)}</span>
+                  <small>
+                    {move.turnsMetric?.status === "simulated" && move.turnsMetric.solveRate !== null
+                      ? `${formatScore(move.turnsMetric.solveRate * 100, 0)}%`
+                      : "est."}
+                  </small>
+                </span>
+              </button>
+              {compact ? (
+                <button
+                  type="button"
+                  className="move-inspect-button"
+                  aria-label={`Pokaż szczegóły ${formatWord(move.word)}`}
+                  aria-pressed={move.word === inspectedWord}
+                  onClick={() => onInspectMove(move)}
+                >
+                  i
+                </button>
+              ) : null}
+            </div>
           );
         })}
       </div>

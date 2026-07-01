@@ -1,13 +1,16 @@
+import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AppShell } from "../app/AppShell";
 import { BestMovesPanel } from "../components/BestMovesPanel";
 import { CandidatePanel } from "../components/CandidatePanel";
 import { GameSummary } from "../components/GameSummary";
+import { MobileKeyboard } from "../components/MobileKeyboard";
+import { MobileWorkspaceTabs } from "../components/MobileWorkspaceTabs";
 import { MoveDetailsPanel } from "../components/MoveDetailsPanel";
 import { WordGrid } from "../components/WordGrid";
 import { stringToPattern } from "../domain/wordle";
-import type { MoveScore } from "../types/wordle";
+import type { MobileWorkspaceView, MoveScore } from "../types/wordle";
 
 describe("component interactions", () => {
   function makeMove(word: string, entropy: number): MoveScore {
@@ -206,6 +209,105 @@ describe("component interactions", () => {
     );
 
     expect(document.activeElement).toBe(screen.getByLabelText("Słowo w wierszu 2"));
+  });
+
+  it("switches mobile workspace tabs with click and arrow keys", () => {
+    function TabsHarness() {
+      const [activeView, setActiveView] = useState<MobileWorkspaceView>("game");
+      return (
+        <MobileWorkspaceTabs
+          activeView={activeView}
+          candidateCount={17}
+          guessCount={1}
+          solverStatus="idle"
+          solverProgress={0}
+          onViewChange={setActiveView}
+        />
+      );
+    }
+
+    render(<TabsHarness />);
+
+    const gameTab = screen.getByRole("tab", { name: "Gra 1/6" });
+    const analysisTab = screen.getByRole("tab", { name: "Analiza 17" });
+    const solverTab = screen.getByRole("tab", { name: "Solver" });
+    expect(gameTab.getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.click(analysisTab);
+    expect(analysisTab.getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyDown(analysisTab, { key: "ArrowRight" });
+    expect(solverTab.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(solverTab);
+  });
+
+  it("uses the mobile keyboard for letters, Polish characters, backspace and Enter", () => {
+    const onDraftChange = vi.fn();
+    const onSubmitDraft = vi.fn();
+    const { rerender } = render(
+      <MobileKeyboard
+        guesses={[]}
+        draft={{ word: "", pattern: stringToPattern("BBBBB") }}
+        onDraftChange={onDraftChange}
+        onSubmitDraft={onSubmitDraft}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Litera S" }));
+    expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({ word: "s" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "PL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Litera Ą" }));
+    expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({ word: "ą" }));
+    expect(screen.queryByRole("button", { name: "Litera Ą" })).toBeNull();
+
+    rerender(
+      <MobileKeyboard
+        guesses={[]}
+        draft={{ word: "stare", pattern: stringToPattern("BBBBB") }}
+        onDraftChange={onDraftChange}
+        onSubmitDraft={onSubmitDraft}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Usuń literę" }));
+    expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({ word: "star" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    expect(onSubmitDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the strongest submitted state for mobile keyboard colors", () => {
+    render(
+      <MobileKeyboard
+        guesses={[{ word: "aaaaa", pattern: stringToPattern("BYGBB") }]}
+        draft={{ word: "", pattern: stringToPattern("BBBBB") }}
+        onDraftChange={vi.fn()}
+        onSubmitDraft={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Litera A" }).classList.contains("key-G")).toBe(true);
+  });
+
+  it("suppresses the native keyboard while preserving physical key handling", () => {
+    const onDraftChange = vi.fn();
+    render(
+      <WordGrid
+        guesses={[]}
+        draft={{ word: "", pattern: stringToPattern("BBBBB") }}
+        onDraftChange={onDraftChange}
+        onSubmitDraft={vi.fn()}
+        onUpdateGuess={vi.fn()}
+        onRemoveGuess={vi.fn()}
+        virtualKeyboardActive
+      />,
+    );
+
+    const input = screen.getByLabelText("Słowo w wierszu 1") as HTMLInputElement;
+    expect(input.inputMode).toBe("none");
+    expect(input.readOnly).toBe(true);
+
+    fireEvent.keyDown(screen.getByRole("region", { name: "Grid gry" }), { key: "ą" });
+    expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({ word: "ą" }));
   });
 
   it("shows metrics for the current committed move", () => {
