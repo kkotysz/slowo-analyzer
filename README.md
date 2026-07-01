@@ -50,7 +50,7 @@ Domyslny tryb to **Symulacja z haslem**:
 3. Aplikacja automatycznie liczy kolory przez mechanike Wordle.
 4. Po ruchu widzisz kandydatow, ranking kolejnych ruchow i metryki jakosci.
 
-Klikniecie slowa z panelu kandydatow, rankingu albo pola **Najlepszy ruch** od razu dodaje je jako kolejny ruch. Po zatwierdzeniu fokus przechodzi do nastepnego pola.
+Klikniecie slowa z panelu kandydatow albo rankingu od razu dodaje je jako kolejny ruch. Po zatwierdzeniu fokus przechodzi do nastepnego pola.
 
 Tryb **Analiza reczna** pozwala samodzielnie ustawic kolory kafelkow. Kafelki przechodza cyklem:
 
@@ -66,6 +66,10 @@ Panel **Stan gry** pokazuje kolejne etapy rozgrywki:
 - liczbe kandydatow po ruchu,
 - redukcje listy kandydatow,
 - podstawowy luck score.
+
+Metryki u gory panelu oceniaja ostatnie zatwierdzone slowo wzgledem
+kandydatow dostepnych przed tym ruchem. Nie sa to metryki najlepszego
+nastepnego slowa; rekomendacje pozostaja w panelu rankingu.
 
 Klikniecie wczesniejszego etapu przycina pozniejsze ruchy. Dzieki temu mozna szybko wrocic do poprzedniego momentu i sprawdzic inna strategie.
 
@@ -118,7 +122,7 @@ To nie jest slowo ze slownika.
 
 ## Metryki rankingu
 
-Ranking domyslnie pokazuje tylko mozliwych kandydatow i sortuje po **Entropii**. Sortowanie zmieniasz klikajac naglowki tabeli: Entropia, Max, Sr. albo P(hit).
+Ranking domyslnie pokazuje tylko mozliwych kandydatow i sortuje po **Entropii**. Sortowanie zmieniasz klikajac naglowki tabeli: Entropia, Max, Sr., P(hit) albo Sr. ruchy.
 
 ### Entropia
 
@@ -147,6 +151,30 @@ P(hit) = 1 / liczba kandydatow
 ```
 
 Jesli slowo jest tylko informacyjne i nie jest mozliwa odpowiedzia, P(hit) wynosi `0%`.
+
+### Srednia liczba ruchow
+
+**Sr. ruchy** pokazuje, ile prob przecietnie potrzebuje solver, gdy oceniane
+slowo jest pierwsza proba tej symulacji. Kolejne ruchy sa zawsze wybierane
+wedlug entropii, z zachowaniem ustawien **Tylko kandydaci**, **Dokladnie** i
+filtra unlikely.
+
+Wartosc z prefiksem `~`, na przyklad `~4,12`, jest szybka estymacja z rozmiarow
+bucketow. Web Worker nastepnie zastepuje ja wynikiem symulacji wszystkich
+aktualnych kandydatow.
+
+Symulacja ma twardy limit 6 prob. Srednia obejmuje hasla rozwiazane w tym
+limicie, dlatego obok znajduje sie solve rate, np. `98%`, informujacy, jaka
+czesc kandydatow zostala rozwiazana.
+
+Sortowanie po tej kolumnie najpierw preferuje wyzszy solve rate, a potem
+nizsza srednia. Dla wydajnosci pelna symulacja obejmuje szersza shortliste:
+
+- 48 slow przy ponad 200 kandydatach,
+- do 96 slow przy maksymalnie 200 kandydatach.
+
+Jest to dokladne porownanie wewnatrz shortlisty, a nie gwarancja znalezienia
+globalnie najlepszego slowa w calym slowniku.
 
 ## Tryb Dokladnie
 

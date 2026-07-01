@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "./AppShell";
-import { analyzeGame, candidatesAfterGuesses, computeLuckScore } from "../domain/analysis";
+import { analyzeGame, candidatesAfterGuesses, computeLuckScore, scoreMove } from "../domain/analysis";
 import {
   annotateMoveWithAnswerMetadata,
   isUnlikelyAnswer,
@@ -9,6 +9,7 @@ import { loadWordLists } from "../domain/dictionary";
 import { EXAMPLE_GAME } from "../domain/examples";
 import { commitWordToGame, pickRandomAnswer, truncateGuesses, updateGuessForMode } from "../domain/game";
 import { isOpeningMoveRequest, preloadOpeningMoves, readPrecomputedOpeningMoves } from "../domain/openingMoves";
+import { estimateTurnsMetric } from "../domain/solver";
 import {
   createEmptyGuess,
   guessIsComplete,
@@ -25,7 +26,13 @@ import { MoveDetailsPanel } from "../components/MoveDetailsPanel";
 import { SolverPanel } from "../components/SolverPanel";
 import { WordGrid } from "../components/WordGrid";
 import { readStoredGame, readStoredTheme, writeStoredGame, writeStoredTheme } from "../storage/gamePersistence";
-import { createAnalysisWorker, postCancelRequest, postRankRequest, postSolveRequest } from "../workers/analysisClient";
+import {
+  createAnalysisWorker,
+  postCancelRequest,
+  postEvaluateTurnsRequest,
+  postRankRequest,
+  postSolveRequest,
+} from "../workers/analysisClient";
 import type {
   AppMode,
   BucketSummary,
@@ -36,6 +43,7 @@ import type {
   RankingSortKey,
   SolverHistogramResult,
   SolverStrategySnapshot,
+  TurnsMetric,
   Word,
   WordLists,
   WorkerAnalyzeResponse,
@@ -101,6 +109,10 @@ export function App() {
   const [selectedMove, setSelectedMove] = useState<MoveScore | undefined>();
   const [workerStatus, setWorkerStatus] = useState<WorkerStatus>("idle");
   const [workerProgress, setWorkerProgress] = useState(0);
+  const [currentTurnsEvaluation, setCurrentTurnsEvaluation] = useState<{
+    key: string;
+    metric: TurnsMetric;
+  }>();
   const [solverStartWord, setSolverStartWord] = useState<Word>("");
   const [solverMaxAttempts, setSolverMaxAttempts] = useState(6);
   const [solverStatus, setSolverStatus] = useState<WorkerStatus>("idle");
@@ -109,8 +121,10 @@ export function App() {
   const [solverMessage, setSolverMessage] = useState("");
   const [message, setMessage] = useState("");
   const requestIdRef = useRef(0);
+  const turnsRequestIdRef = useRef(0);
   const solverRequestIdRef = useRef(0);
   const workerRef = useRef<Worker | null>(null);
+  const turnsWorkerRef = useRef<Worker | null>(null);
   const solverWorkerRef = useRef<Worker | null>(null);
 
   useEffect(() => {
@@ -134,6 +148,7 @@ export function App() {
   useEffect(() => {
     return () => {
       workerRef.current?.terminate();
+      turnsWorkerRef.current?.terminate();
       solverWorkerRef.current?.terminate();
     };
   }, []);
@@ -173,7 +188,7 @@ export function App() {
   const solverStrategy = useMemo((): SolverStrategySnapshot => ({
     candidateOnly,
     exact: exactRanking,
-    sortKey: rankingSortKey,
+    sortKey: rankingSortKey === "averageAttempts" ? "entropy" : rankingSortKey,
   }), [candidateOnly, exactRanking, rankingSortKey]);
   const normalizedSolverStartWord = normalizeWord(solverStartWord);
   const solverCanStart = (
@@ -218,6 +233,34 @@ export function App() {
       buckets: selectedMove.bucketSummaries,
     };
   }, [answer, candidates.length, mode, selectedMove]);
+  const currentMoveEstimate = useMemo(() => {
+    const latestStep = analysisSteps.at(-1);
+    if (!latestStep) return undefined;
+    const move = scoreMove(latestStep.guess.word, latestStep.candidatesBefore);
+    return {
+      ...move,
+      turnsMetric: estimateTurnsMetric(move, latestStep.countBefore),
+    };
+  }, [analysisSteps]);
+  const currentTurnsKey = useMemo(() => {
+    const latestStep = analysisSteps.at(-1);
+    if (!latestStep) return "";
+    return [
+      latestStep.guess.word,
+      candidateOnly ? "c" : "a",
+      exactRanking ? "exact" : "fast",
+      wordLists.dictionaryVersion ?? "",
+      latestStep.candidatesBefore.join(","),
+    ].join("|");
+  }, [analysisSteps, candidateOnly, exactRanking, wordLists.dictionaryVersion]);
+  const currentMove = currentMoveEstimate
+    ? {
+        ...currentMoveEstimate,
+        turnsMetric: currentTurnsEvaluation?.key === currentTurnsKey
+          ? currentTurnsEvaluation.metric
+          : currentMoveEstimate.turnsMetric,
+      }
+    : undefined;
   const gameMessage = message || (mode === "simulation"
     ? "Wpisz hasło końcowe; kolory będą liczone automatycznie."
     : "Wpisz słowo w aktywnym wierszu i ustaw kolory kafelków.");
@@ -243,12 +286,17 @@ export function App() {
         response.type === "solver-running" ||
         response.type === "solver-done" ||
         response.type === "solver-cancelled" ||
-        response.type === "solver-error"
+        response.type === "solver-error" ||
+        response.type === "turns-running" ||
+        response.type === "turns-done" ||
+        response.type === "turns-cancelled" ||
+        response.type === "turns-error"
       ) return;
 
       if (response.type === "running") {
         setWorkerStatus("running");
         setWorkerProgress(response.progress);
+        if (response.moves) setMoves(response.moves);
       } else if (response.type === "done") {
         setMoves(response.moves);
         setWorkerStatus("done");
@@ -267,7 +315,7 @@ export function App() {
       requestId,
       candidates,
       allowedGuesses: activeAllowedGuesses,
-      limit: hideUnlikelyAnswers ? RANK_LIMIT * 2 : RANK_LIMIT,
+      limit: RANK_LIMIT,
       candidateOnly,
       sortKey: rankingSortKey,
       exact: exactRanking,
@@ -279,14 +327,14 @@ export function App() {
       completeGuessCount: completeGuesses.length,
     };
 
-    const startWorker = () => {
+    const startWorker = (precomputedMoves?: MoveScore[]) => {
       if (cancelled || requestId !== requestIdRef.current) return;
       if (!workerRef.current) {
         workerRef.current = createAnalysisWorker();
       }
       const worker = workerRef.current;
       worker.onmessage = handleWorkerMessage;
-      postRankRequest(worker, workerRequest);
+      postRankRequest(worker, { ...workerRequest, precomputedMoves });
     };
 
     if (isOpeningMoveRequest(openingRequest)) {
@@ -295,8 +343,9 @@ export function App() {
         if (cancelled || requestId !== requestIdRef.current) return;
         if (precomputedMoves) {
           setMoves(precomputedMoves);
-          setWorkerStatus("done");
-          setWorkerProgress(1);
+          setWorkerStatus("running");
+          setWorkerProgress(0.5);
+          startWorker(precomputedMoves);
           return;
         }
         setWorkerStatus(moves.length ? "done" : "idle");
@@ -308,7 +357,9 @@ export function App() {
 
     return () => {
       cancelled = true;
-      requestIdRef.current = requestId;
+      if (workerRef.current) {
+        postCancelRequest(workerRef.current, { type: "cancel", requestId });
+      }
     };
   }, [
     candidateOnly,
@@ -318,6 +369,53 @@ export function App() {
     hideUnlikelyAnswers,
     rankingSortKey,
     activeAllowedGuesses,
+    wordLists.dictionaryVersion,
+  ]);
+
+  useEffect(() => {
+    const latestStep = analysisSteps.at(-1);
+    if (!latestStep || !currentMoveEstimate || !activeAllowedGuesses.length) {
+      setCurrentTurnsEvaluation(undefined);
+      return;
+    }
+
+    const requestId = turnsRequestIdRef.current + 1;
+    turnsRequestIdRef.current = requestId;
+    setCurrentTurnsEvaluation({
+      key: currentTurnsKey,
+      metric: currentMoveEstimate.turnsMetric,
+    });
+
+    if (!turnsWorkerRef.current) turnsWorkerRef.current = createAnalysisWorker();
+    const worker = turnsWorkerRef.current;
+    worker.onmessage = (event: MessageEvent<WorkerAnalyzeResponse>) => {
+      const response = event.data;
+      if (response.requestId !== turnsRequestIdRef.current) return;
+      if (response.type === "turns-running" || response.type === "turns-done") {
+        setCurrentTurnsEvaluation({ key: currentTurnsKey, metric: response.metric });
+      }
+    };
+    postEvaluateTurnsRequest(worker, {
+      type: "evaluate-turns",
+      requestId,
+      word: latestStep.guess.word,
+      candidates: latestStep.candidatesBefore,
+      allowedGuesses: activeAllowedGuesses,
+      candidateOnly,
+      exact: exactRanking,
+      dictionaryVersion: wordLists.dictionaryVersion,
+    });
+
+    return () => {
+      postCancelRequest(worker, { type: "cancel", requestId });
+    };
+  }, [
+    activeAllowedGuesses,
+    analysisSteps,
+    candidateOnly,
+    currentMoveEstimate,
+    currentTurnsKey,
+    exactRanking,
     wordLists.dictionaryVersion,
   ]);
 
@@ -596,8 +694,7 @@ export function App() {
             guesses={completeGuesses}
             steps={analysisSteps}
             candidateCount={candidates.length}
-            bestMove={visibleMoves[0]}
-            onPickWord={pickWord}
+            currentMove={currentMove}
             onSelectStep={selectHistoryStep}
           />
 

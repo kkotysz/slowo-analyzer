@@ -146,9 +146,11 @@ button:not(:disabled):active {
   display: grid;
   gap: 18px;
   align-items: start;
+  min-width: 0;
 }
 
 .panel {
+  min-width: 0;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface-muted) 18%, var(--surface))),
     color-mix(in srgb, var(--surface) 94%, transparent);
@@ -876,6 +878,12 @@ button:not(:disabled):active {
   font-size: 21px;
 }
 
+.metric-note {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .candidate-badge {
   border-radius: 999px;
   padding: 8px 12px;
@@ -1059,6 +1067,8 @@ button:not(:disabled):active {
 
 .move-table {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 8px;
   max-height: 480px;
   overflow: auto;
@@ -1070,7 +1080,7 @@ button:not(:disabled):active {
 .move-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 34px minmax(112px, 1.3fr) repeat(4, minmax(62px, 0.7fr));
+  grid-template-columns: 34px minmax(104px, 1.25fr) repeat(5, minmax(58px, 0.68fr));
   align-items: center;
   gap: 8px;
   border: 1px solid var(--line);
@@ -1081,6 +1091,17 @@ button:not(:disabled):active {
   text-align: left;
   position: relative;
   overflow: hidden;
+}
+
+.turns-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.turns-cell small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
 }
 
 .move-row:not(.move-head)::before {
@@ -1409,12 +1430,8 @@ button:not(:disabled):active {
   }
 
   .move-row {
-    grid-template-columns: 28px minmax(90px, 1fr) repeat(2, minmax(56px, 0.65fr));
-  }
-
-  .move-row span:nth-child(5),
-  .move-row span:nth-child(6) {
-    display: none;
+    min-width: 580px;
+    grid-template-columns: 28px minmax(90px, 1fr) repeat(5, minmax(56px, 0.65fr));
   }
 
   .primary-button,

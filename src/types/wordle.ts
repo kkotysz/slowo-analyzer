@@ -20,12 +20,14 @@ export type AnswerLikelihoodReason = "inflection";
 
 export type AnswerProfile = "all" | "likelyOnly";
 
-export type RankingSortKey =
+export type BaseRankingSortKey =
   | "entropy"
   | "worstBucket"
   | "averageBucket"
   | "hitProbability"
   | "candidateFirst";
+
+export type RankingSortKey = BaseRankingSortKey | "averageAttempts";
 
 export type WorkerStatus = "idle" | "running" | "done" | "error" | "cancelled";
 
@@ -85,6 +87,14 @@ export interface AnalysisStep {
   luckScore: number;
 }
 
+export interface TurnsMetric {
+  averageAttempts: number | null;
+  solveRate: number | null;
+  solvedAnswers: number;
+  totalAnswers: number;
+  status: "estimated" | "simulated";
+}
+
 export interface MoveScore {
   word: Word;
   entropy: number;
@@ -98,11 +108,12 @@ export interface MoveScore {
   likelihood?: AnswerLikelihood;
   likelihoodReason?: AnswerLikelihoodReason;
   lemmas?: Word[];
+  turnsMetric?: TurnsMetric;
 }
 
 export interface PrecomputedOpeningMoveRankings {
-  candidateOnly: Partial<Record<RankingSortKey, MoveScore[]>>;
-  allMoves: Partial<Record<RankingSortKey, MoveScore[]>>;
+  candidateOnly: Partial<Record<BaseRankingSortKey, MoveScore[]>>;
+  allMoves: Partial<Record<BaseRankingSortKey, MoveScore[]>>;
 }
 
 export interface PrecomputedOpeningMoves {
@@ -149,7 +160,7 @@ export interface SolverResult {
 export interface SolverStrategySnapshot {
   candidateOnly: boolean;
   exact: boolean;
-  sortKey: RankingSortKey;
+  sortKey: BaseRankingSortKey;
 }
 
 export interface SolverHistogramBucket {
@@ -200,6 +211,18 @@ export interface WorkerRankRequest {
   exact: boolean;
   answerProfile?: AnswerProfile;
   dictionaryVersion?: string;
+  precomputedMoves?: MoveScore[];
+}
+
+export interface WorkerEvaluateTurnsRequest {
+  type: "evaluate-turns";
+  requestId: number;
+  word: Word;
+  candidates: Word[];
+  allowedGuesses: Word[];
+  candidateOnly: boolean;
+  exact: boolean;
+  dictionaryVersion?: string;
 }
 
 export interface WorkerSolveRequest {
@@ -218,13 +241,19 @@ export interface WorkerCancelRequest {
   requestId: number;
 }
 
-export type WorkerAnalyzeRequest = WorkerRankRequest | WorkerSolveRequest | WorkerCancelRequest;
+export type WorkerAnalyzeRequest =
+  | WorkerRankRequest
+  | WorkerEvaluateTurnsRequest
+  | WorkerSolveRequest
+  | WorkerCancelRequest;
 
 export type WorkerRankResponse =
   | {
       type: "running";
       requestId: number;
       progress: number;
+      phase?: "ranking" | "turns";
+      moves?: MoveScore[];
     }
   | {
       type: "done";
@@ -237,6 +266,28 @@ export type WorkerRankResponse =
     }
   | {
       type: "error";
+      requestId: number;
+      message: string;
+    };
+
+export type WorkerEvaluateTurnsResponse =
+  | {
+      type: "turns-running";
+      requestId: number;
+      progress: number;
+      metric: TurnsMetric;
+    }
+  | {
+      type: "turns-done";
+      requestId: number;
+      metric: TurnsMetric;
+    }
+  | {
+      type: "turns-cancelled";
+      requestId: number;
+    }
+  | {
+      type: "turns-error";
       requestId: number;
       message: string;
     };
@@ -263,7 +314,10 @@ export type WorkerSolveResponse =
       message: string;
     };
 
-export type WorkerAnalyzeResponse = WorkerRankResponse | WorkerSolveResponse;
+export type WorkerAnalyzeResponse =
+  | WorkerRankResponse
+  | WorkerEvaluateTurnsResponse
+  | WorkerSolveResponse;
 
 export type GameCommandStatus = "ok" | "error";
 

@@ -1,8 +1,24 @@
-import type { AnswerProfile, MoveScore, PrecomputedOpeningMoves, RankingSortKey, Word } from "../types/wordle";
+import type {
+  AnswerProfile,
+  BaseRankingSortKey,
+  MoveScore,
+  PrecomputedOpeningMoves,
+  RankingSortKey,
+  Word,
+} from "../types/wordle";
 import { DICTIONARY_VERSION } from "./dictionaryMetadata";
 import { createPublicAssetUrl } from "./publicAssets";
+import { estimateTurnsMetric } from "./solver";
 
 const OPENING_MOVES_URL = createPublicAssetUrl("opening-moves.json");
+const EXPECTED_TURNS_WIDE_LIMIT = 48;
+const EXPECTED_TURNS_NARROW_LIMIT = 96;
+const EXPECTED_TURNS_SOURCE_KEYS: BaseRankingSortKey[] = [
+  "entropy",
+  "averageBucket",
+  "worstBucket",
+  "hitProbability",
+];
 
 let openingMovesPromise: Promise<PrecomputedOpeningMoves | null> | undefined;
 
@@ -89,6 +105,25 @@ export async function readPrecomputedOpeningMoves(request: OpeningMoveRequest): 
     : openingMoves.rankings;
   const rankingGroup = request.candidateOnly ? rankings?.candidateOnly : rankings?.allMoves;
   if (!rankingGroup) return null;
+  if (request.sortKey === "averageAttempts") {
+    const byWord = new Map<Word, MoveScore>();
+    for (const sortKey of EXPECTED_TURNS_SOURCE_KEYS) {
+      for (const move of rankingGroup[sortKey] ?? []) byWord.set(move.word, move);
+    }
+    const shortlistLimit = request.candidates.length > 200
+      ? EXPECTED_TURNS_WIDE_LIMIT
+      : EXPECTED_TURNS_NARROW_LIMIT;
+    return [...byWord.values()]
+      .map((move) => ({
+        ...move,
+        turnsMetric: estimateTurnsMetric(move, request.candidates.length),
+      }))
+      .sort((a, b) => (
+        (a.turnsMetric?.averageAttempts ?? Number.POSITIVE_INFINITY) -
+        (b.turnsMetric?.averageAttempts ?? Number.POSITIVE_INFINITY)
+      ))
+      .slice(0, shortlistLimit);
+  }
   const moves = rankingGroup[request.sortKey] ?? rankingGroup.entropy;
   return moves ? moves.slice(0, request.limit) : null;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeGame, scoreMove } from "../domain/analysis";
-import { rankMoves } from "../domain/ranking";
+import { compareMoveScores, rankMoves } from "../domain/ranking";
 import { stringToPattern } from "../domain/wordle";
 
 describe("analysis", () => {
@@ -32,5 +32,30 @@ describe("analysis", () => {
 
     expect(moves).toHaveLength(3);
     expect(moves[0].entropy).toBeGreaterThanOrEqual(moves[1].entropy);
+  });
+
+  it("sorts average attempts by solve rate before the solved-only average", () => {
+    const reliable = {
+      ...scoreMove("stare", words),
+      turnsMetric: {
+        averageAttempts: 4.2,
+        solveRate: 1,
+        solvedAnswers: 5,
+        totalAnswers: 5,
+        status: "simulated" as const,
+      },
+    };
+    const deceptivelyFast = {
+      ...scoreMove("krety", words),
+      turnsMetric: {
+        averageAttempts: 2.5,
+        solveRate: 0.8,
+        solvedAnswers: 4,
+        totalAnswers: 5,
+        status: "simulated" as const,
+      },
+    };
+
+    expect(compareMoveScores(reliable, deceptivelyFast, "averageAttempts")).toBeLessThan(0);
   });
 });

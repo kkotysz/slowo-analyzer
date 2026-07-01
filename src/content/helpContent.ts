@@ -15,7 +15,7 @@ export const HELP_SECTIONS: HelpSection[] = [
     body: [
       "Słowo Analyzer pomaga analizować polskie Wordle: po każdym ruchu zawęża listę możliwych odpowiedzi i liczy ranking kolejnych zgadnięć.",
       "Domyślny tryb to symulacja z hasłem: wpisujesz hasło końcowe, potem dodajesz słowa, a kolory są liczone automatycznie. W trybie ręcznym sam ustawiasz kolory kafelków.",
-      "Kliknięcie słowa z listy kandydatów, rankingu albo pola Najlepszy ruch od razu dodaje je jako kolejny ruch.",
+      "Kliknięcie słowa z listy kandydatów albo rankingu od razu dodaje je jako kolejny ruch.",
     ],
   },
   {
@@ -82,6 +82,18 @@ export const HELP_SECTIONS: HelpSection[] = [
     ],
   },
   {
+    title: "Średnia liczba ruchów",
+    tag: "Symulacja",
+    tone: "orange",
+    takeaway: "Niżej znaczy lepiej, ale zawsze sprawdź także procent rozwiązań w sześciu próbach.",
+    body: [
+      "Śr. ruchy mówi, ile prób przeciętnie potrzebuje solver, gdy oceniane słowo jest próbą numer 1. Kolejne słowa wybiera strategia entropijna z aktualnymi ustawieniami Tylko kandydaci i Dokładnie.",
+      "Wartość z prefiksem ~ jest szybką estymacją z bucketów. Worker zastępuje ją pełną symulacją wszystkich aktualnych kandydatów, nie blokując interfejsu.",
+      "Symulacja ma limit sześciu prób. Średnia obejmuje rozwiązane hasła, dlatego obok wyniku widzisz solve rate, czyli procent odpowiedzi rozwiązanych w limicie.",
+      "Sortowanie po Śr. ruchy ocenia szerszą shortlistę, a nie cały słownik. Najpierw preferuje wyższy solve rate, potem niższą średnią.",
+    ],
+  },
+  {
     title: "Dokładnie i heurystyka",
     tag: "Szybkość",
     tone: "violet",
@@ -99,7 +111,7 @@ export const HELP_SECTIONS: HelpSection[] = [
     takeaway: "Sprawdza rozkład liczby prób dla wybranego słowa startowego.",
     body: [
       "Panel Solver startowy uruchamiasz ręcznie przyciskiem Start. Wpisane słowo jest pierwszą próbą, a limit prób obejmuje także ten ruch.",
-      "Solver testuje aktywną pulę haseł ze słownika odpowiedzi. Po każdym buckecie wybiera następne słowo według aktualnych ustawień rankingu: Tylko kandydaci, Dokładnie, Ukryj unlikely i aktywnej metryki sortowania.",
+      "Solver testuje aktywną pulę haseł ze słownika odpowiedzi. Po każdym buckecie wybiera następne słowo według aktualnych ustawień rankingu. Gdy ranking jest sortowany po Śr. ruchy, dalszą strategią solvera jest entropia.",
       "Histogram pokazuje, ile haseł rozwiązało się w 1..n próbach. Słupek > n zbiera hasła nierozwiązane w zadanym limicie.",
     ],
   },
@@ -109,7 +121,7 @@ export const HELP_SECTIONS: HelpSection[] = [
     tone: "orange",
     takeaway: "Kliknij wcześniejszy etap, żeby uciąć późniejsze ruchy i spróbować inaczej.",
     body: [
-      "Panel Stan gry pokazuje kolejne ruchy, liczbę kandydatów po ruchu, redukcję i luck score.",
+      "Panel Stan gry ocenia ostatnie zatwierdzone słowo względem kandydatów dostępnych przed tym ruchem. Pokazuje entropię, buckety, P(hit), średnią prób i aktualną liczbę kandydatów.",
       "Kliknięcie wcześniejszego etapu przycina późniejsze ruchy. To pozwala szybko wrócić i sprawdzić alternatywną strategię.",
       "Przycisk Losowe hasło wybiera odpowiedź ze słownika i pozwala trenować bez ręcznego wymyślania hasła.",
     ],

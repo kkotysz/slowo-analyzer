@@ -36,7 +36,15 @@ const SORTABLE_COLUMNS: Array<{ key: RankingSortKey; label: string; shortLabel: 
   { key: "worstBucket", label: "Max bucket", shortLabel: "Max" },
   { key: "averageBucket", label: "Średni bucket", shortLabel: "Śr." },
   { key: "hitProbability", label: "Prawdopodobieństwo trafienia", shortLabel: "P(hit)" },
+  { key: "averageAttempts", label: "Średnia liczba ruchów", shortLabel: "Ruchy" },
 ];
+
+function formatAttempts(move: MoveScore): string {
+  const metric = move.turnsMetric;
+  if (!metric || metric.averageAttempts === null) return "—";
+  const value = formatScore(metric.averageAttempts, 2);
+  return metric.status === "estimated" ? `~${value}` : value;
+}
 
 function SortHeader({
   column,
@@ -151,6 +159,14 @@ export function BestMovesPanel({
               <span>{move.worstBucket.toLocaleString("pl-PL")}</span>
               <span>{formatScore(move.averageBucket, 1)}</span>
               <span>{formatScore(move.hitProbability * 100, 1)}%</span>
+              <span className="turns-cell">
+                <span>{formatAttempts(move)}</span>
+                <small>
+                  {move.turnsMetric?.status === "simulated" && move.turnsMetric.solveRate !== null
+                    ? `${formatScore(move.turnsMetric.solveRate * 100, 0)}%`
+                    : "est."}
+                </small>
+              </span>
             </button>
           );
         })}

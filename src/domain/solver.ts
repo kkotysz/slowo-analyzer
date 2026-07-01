@@ -5,6 +5,7 @@ import type {
   SolverHistogramResult,
   SolverResult,
   SolverStrategySnapshot,
+  TurnsMetric,
   Word,
 } from "../types/wordle";
 import { scoreMove } from "./analysis";
@@ -29,10 +30,54 @@ function bucketCandidates(move: Word, candidates: readonly Word[]): Map<string, 
   return buckets;
 }
 
-function terminalEstimate(candidates: number): number {
+export function terminalEstimate(candidates: number): number {
   if (candidates <= 0) return 0;
   if (candidates === 1) return 1;
   return 1 + Math.log2(candidates);
+}
+
+export function estimateAverageAttempts(
+  bucketCounts: Iterable<number>,
+  total: number,
+  solvedBucketIndex?: number,
+): number {
+  if (total <= 0) return 0;
+
+  let expectedAttempts = 1;
+  let index = 0;
+  for (const count of bucketCounts) {
+    if (count > 0 && index !== solvedBucketIndex) {
+      expectedAttempts += (count / total) * terminalEstimate(count);
+    }
+    index += 1;
+  }
+  return expectedAttempts;
+}
+
+export function estimateTurnsMetric(move: MoveScore, total: number): TurnsMetric {
+  const bucketEntries = Object.entries(move.buckets);
+  const solvedIndex = bucketEntries.findIndex(([pattern]) => pattern === "GGGGG");
+  return {
+    averageAttempts: estimateAverageAttempts(
+      bucketEntries.map(([, count]) => count),
+      total,
+      solvedIndex >= 0 ? solvedIndex : undefined,
+    ),
+    solveRate: null,
+    solvedAnswers: 0,
+    totalAnswers: total,
+    status: "estimated",
+  };
+}
+
+export function turnsMetricFromSolverResult(result: SolverHistogramResult): TurnsMetric {
+  return {
+    averageAttempts: result.solvedAnswers > 0 ? result.averageAttempts : null,
+    solveRate: result.totalAnswers > 0 ? result.solvedAnswers / result.totalAnswers : 0,
+    solvedAnswers: result.solvedAnswers,
+    totalAnswers: result.totalAnswers,
+    status: "simulated",
+  };
 }
 
 export function solveState(

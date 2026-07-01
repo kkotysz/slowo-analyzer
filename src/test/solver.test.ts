@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { evaluateMove, pickSolverMove, simulateSolverHistogram, solveState } from "../domain/solver";
+import {
+  estimateAverageAttempts,
+  estimateTurnsMetric,
+  evaluateMove,
+  pickSolverMove,
+  simulateSolverHistogram,
+  solveState,
+  turnsMetricFromSolverResult,
+} from "../domain/solver";
 import { scoreMove } from "../domain/analysis";
 import type { SolverStrategySnapshot } from "../types/wordle";
 
@@ -63,6 +71,38 @@ describe("solver", () => {
     const total = result.histogram.reduce((sum, bucket) => sum + bucket.count, 0);
     expect(total).toBe(3);
     expect(result.totalAnswers).toBe(3);
+  });
+
+  it("estimates turns from buckets and skips the solved bucket", () => {
+    const move = scoreMove("stare", ["stare", "trefl", "trela"]);
+    const metric = estimateTurnsMetric(move, 3);
+    const entries = Object.entries(move.buckets);
+    const solvedIndex = entries.findIndex(([pattern]) => pattern === "GGGGG");
+    const directEstimate = estimateAverageAttempts([1, 2], 3, 0);
+
+    expect(metric.status).toBe("estimated");
+    expect(metric.solveRate).toBeNull();
+    expect(metric.averageAttempts).toBeCloseTo(estimateAverageAttempts(
+      entries.map(([, count]) => count),
+      3,
+      solvedIndex,
+    ));
+    expect(directEstimate).toBeCloseTo(7 / 3);
+  });
+
+  it("builds a simulated turns metric with solve rate under the hard limit", async () => {
+    const result = await simulateSolverHistogram(["stare", "trefl"], words, {
+      startWord: "stare",
+      maxAttempts: 1,
+      strategy,
+    });
+    const metric = turnsMetricFromSolverResult(result);
+
+    expect(metric.status).toBe("simulated");
+    expect(metric.averageAttempts).toBe(1);
+    expect(metric.solveRate).toBe(0.5);
+    expect(metric.solvedAnswers).toBe(1);
+    expect(metric.totalAnswers).toBe(2);
   });
 
   it("uses the configured strategy and avoids repeated non-terminal moves", async () => {

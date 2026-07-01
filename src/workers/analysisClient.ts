@@ -1,6 +1,7 @@
 import type {
   WorkerAnalyzeResponse,
   WorkerCancelRequest,
+  WorkerEvaluateTurnsRequest,
   WorkerRankRequest,
   WorkerSolveRequest,
 } from "../types/wordle";
@@ -12,6 +13,10 @@ export function createAnalysisWorker(): Worker {
 export type AnalysisWorkerMessageHandler = (message: WorkerAnalyzeResponse) => void;
 
 export function postRankRequest(worker: Worker, request: WorkerRankRequest): void {
+  worker.postMessage(request);
+}
+
+export function postEvaluateTurnsRequest(worker: Worker, request: WorkerEvaluateTurnsRequest): void {
   worker.postMessage(request);
 }
 

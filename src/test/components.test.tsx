@@ -208,17 +208,23 @@ describe("component interactions", () => {
     expect(document.activeElement).toBe(screen.getByLabelText("Słowo w wierszu 2"));
   });
 
-  it("lets the best move in the summary be picked", () => {
-    const onPickWord = vi.fn();
-    const bestMove: MoveScore = {
-      word: "trier",
-      entropy: 4.073,
+  it("shows metrics for the current committed move", () => {
+    const currentMove: MoveScore = {
+      word: "stare",
+      entropy: 3.125,
       averageBucket: 8,
       worstBucket: 13,
-      hitProbability: 0,
-      isCandidate: false,
+      hitProbability: 0.1,
+      isCandidate: true,
       buckets: {},
       bucketSummaries: [],
+      turnsMetric: {
+        averageAttempts: 4.25,
+        solveRate: 0.9,
+        solvedAnswers: 9,
+        totalAnswers: 10,
+        status: "simulated",
+      },
     };
 
     render(
@@ -226,30 +232,31 @@ describe("component interactions", () => {
         guesses={[{ word: "stare", pattern: stringToPattern("BYBYY") }]}
         steps={[]}
         candidateCount={70}
-        bestMove={bestMove}
-        onPickWord={onPickWord}
+        currentMove={currentMove}
         onSelectStep={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /najlepszy ruch/i }));
-
-    expect(onPickWord).toHaveBeenCalledWith("trier");
+    expect(screen.getByText(/ocena STARE/i)).toBeTruthy();
+    expect(screen.getByText("3.125")).toBeTruthy();
+    expect(screen.getByText("4,25")).toBeTruthy();
+    expect(screen.getByText("90% w ≤6")).toBeTruthy();
+    expect(screen.queryByText("Najlepszy ruch")).toBeNull();
   });
 
-  it("keeps the best move disabled when there is no move", () => {
-    render(
+  it("shows placeholders before the first move", () => {
+    const { container } = render(
       <GameSummary
         guesses={[]}
         steps={[]}
         candidateCount={0}
-        bestMove={undefined}
-        onPickWord={vi.fn()}
+        currentMove={undefined}
         onSelectStep={vi.fn()}
       />,
     );
 
-    expect(screen.getByRole("button", { name: /najlepszy ruch/i })).toHaveProperty("disabled", true);
+    expect(screen.getByText(/dodaj pierwszy ruch/i)).toBeTruthy();
+    expect(container.querySelectorAll(".metric-box strong")).toHaveLength(6);
   });
 
   it("opens and closes the help dialog from the app shell", () => {

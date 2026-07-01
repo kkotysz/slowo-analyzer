@@ -25,6 +25,20 @@ export function compareMoveScores(a: MoveScore, b: MoveScore, sortKey: RankingSo
   if (sortKey === "candidateFirst") {
     return Number(b.isCandidate) - Number(a.isCandidate) || stableFallback;
   }
+  if (sortKey === "averageAttempts") {
+    const aMetric = a.turnsMetric;
+    const bMetric = b.turnsMetric;
+    const aSolveRate = aMetric?.solveRate;
+    const bSolveRate = bMetric?.solveRate;
+    if (aSolveRate !== null && aSolveRate !== undefined && bSolveRate !== null && bSolveRate !== undefined) {
+      const solveRateOrder = bSolveRate - aSolveRate;
+      if (solveRateOrder) return solveRateOrder;
+    }
+
+    const aAverage = aMetric?.averageAttempts ?? Number.POSITIVE_INFINITY;
+    const bAverage = bMetric?.averageAttempts ?? Number.POSITIVE_INFINITY;
+    return aAverage - bAverage || stableFallback;
+  }
 
   return stableFallback;
 }
